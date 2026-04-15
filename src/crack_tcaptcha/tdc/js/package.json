@@ -1,0 +1,9 @@
+{
+  "name": "tdc-executor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "jsdom bridge for tdc.js execution",
+  "dependencies": {
+    "jsdom": "^25.0.0"
+  }
+}

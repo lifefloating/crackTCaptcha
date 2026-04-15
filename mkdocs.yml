@@ -1,0 +1,13 @@
+site_name: crack-tcaptcha
+site_description: Automated TCaptcha solver library
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: teal
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Slider: slider.md
+  - Icon Click: icon-click.md
+  - Reverse Notes: reverse-notes.md

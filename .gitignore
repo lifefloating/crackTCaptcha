@@ -1,0 +1,17 @@
+.claude
+.venv
+__pycache__
+*.pyc
+*.egg-info
+dist
+build
+node_modules
+.ruff_cache
+.mypy_cache
+.pytest_cache
+site
+*.so
+*.whl
+uv.lock
+.env
+*.onnx
