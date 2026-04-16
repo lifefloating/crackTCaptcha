@@ -31,6 +31,13 @@ class FgElem(BaseModel):
     init_pos: tuple[int, int]
 
 
+class SelectRegion(BaseModel):
+    """One clickable region in a ``click_image_uncheck`` grid captcha."""
+
+    id: int
+    range: tuple[int, int, int, int]  # (x1, y1, x2, y2)
+
+
 class PowConfig(BaseModel):
     prefix: str
     target_md5: str
@@ -45,9 +52,15 @@ class BgElemCfg(BaseModel):
 class PrehandleResp(BaseModel):
     sess: str
     bg_elem_cfg: BgElemCfg
-    fg_elem_list: list[FgElem]
+    fg_elem_list: list[FgElem] = []
     pow_cfg: PowConfig
     tdc_path: str = ""
+    # click_image_uncheck fields
+    instruction: str = ""
+    show_type: str = ""
+    data_type: list[str] = []
+    select_regions: list[SelectRegion] = []
+    json_payload: dict[str, Any] = {}
     raw: dict[str, Any] = {}
 
 

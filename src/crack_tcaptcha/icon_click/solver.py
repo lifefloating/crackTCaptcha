@@ -1,92 +1,126 @@
-"""Icon-click solver — ddddocr wrapper with lazy import."""
+"""Solver for click_image_uncheck captcha — pick the image matching a text instruction.
+
+Uses Chinese-CLIP (cn-clip) to compute text-image similarity scores and select the
+best-matching region.  Falls back to random selection if CLIP is unavailable.
+"""
 
 from __future__ import annotations
 
 import io
 import logging
-from typing import TYPE_CHECKING
+import random
 
 import numpy as np
 from PIL import Image
 
-if TYPE_CHECKING:
-    import ddddocr
+from crack_tcaptcha.models import SelectRegion
 
 log = logging.getLogger(__name__)
 
-_ocr: ddddocr.DdddOcr | None = None
-_det: ddddocr.DdddOcr | None = None
+# ---------------------------------------------------------------------------
+# Lazy CLIP loader
+# ---------------------------------------------------------------------------
+
+_clip_model = None
+_clip_preprocess = None
+_clip_tokenizer = None
+_clip_available: bool | None = None
 
 
-def _get_det() -> ddddocr.DdddOcr:
-    global _det
-    if _det is None:
-        import ddddocr
+def _ensure_clip():
+    """Lazily load Chinese-CLIP model. Returns True if available."""
+    global _clip_model, _clip_preprocess, _clip_tokenizer, _clip_available
 
-        _det = ddddocr.DdddOcr(det=True, show_ad=False)
-    return _det
+    if _clip_available is not None:
+        return _clip_available
 
+    try:
+        import cn_clip.clip as clip
+        from cn_clip.clip import load_from_name
 
-def _get_ocr() -> ddddocr.DdddOcr:
-    global _ocr
-    if _ocr is None:
-        import ddddocr
+        model, preprocess = load_from_name("ViT-B-16", device="cpu", download_root=None)
+        model.eval()
+        _clip_model = model
+        _clip_preprocess = preprocess
+        _clip_tokenizer = clip.tokenize
+        _clip_available = True
+        log.info("Chinese-CLIP loaded successfully")
+    except Exception as e:
+        log.warning("Chinese-CLIP not available (%s), will use random fallback", e)
+        _clip_available = False
 
-        _ocr = ddddocr.DdddOcr(show_ad=False)
-    return _ocr
-
-
-def detect_icons(bg_bytes: bytes) -> list[tuple[int, int, int, int]]:
-    """Detect candidate icon bounding boxes on the background image.
-
-    Returns list of ``(x1, y1, x2, y2)`` bboxes.
-    """
-    det = _get_det()
-    bboxes = det.detection(bg_bytes)
-    return [(int(b[0]), int(b[1]), int(b[2]), int(b[3])) for b in bboxes]
+    return _clip_available
 
 
-def match_icons(
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def crop_regions(bg_bytes: bytes, regions: list[SelectRegion]) -> list[Image.Image]:
+    """Crop sub-images from the background image according to region definitions."""
+    bg_img = Image.open(io.BytesIO(bg_bytes)).convert("RGB")
+    crops = []
+    for r in regions:
+        x1, y1, x2, y2 = r.range
+        crops.append(bg_img.crop((x1, y1, x2, y2)))
+    return crops
+
+
+def select_best_match(
     bg_bytes: bytes,
-    hint_images: list[bytes],
-) -> list[tuple[int, int]]:
-    """Match each hint icon to its best candidate on the bg, returning click coordinates.
+    regions: list[SelectRegion],
+    instruction: str,
+) -> int:
+    """Select the region index (0-based) whose image best matches *instruction*.
 
-    *hint_images*: list of small PNG bytes for each target icon (in order).
-    Returns ``[(cx, cy), ...]`` — center coordinates for each hint icon.
+    Returns the 0-based index into *regions*.
     """
-    bboxes = detect_icons(bg_bytes)
-    if not bboxes:
-        log.warning("No candidates detected on bg")
-        return []
+    crops = crop_regions(bg_bytes, regions)
 
-    bg_arr = np.array(Image.open(io.BytesIO(bg_bytes)).convert("RGB"))
-    results: list[tuple[int, int]] = []
+    # Strip surrounding quotes from instruction like '"足球"'
+    keyword = instruction.strip().strip('""\u201c\u201d')
 
-    for hint_bytes in hint_images:
-        hint_arr = np.array(Image.open(io.BytesIO(hint_bytes)).convert("RGB"))
-        best_score = -1.0
-        best_center = (0, 0)
+    if _ensure_clip():
+        return _clip_select(crops, keyword)
 
-        for x1, y1, x2, y2 in bboxes:
-            candidate = bg_arr[y1:y2, x1:x2]
-            if candidate.size == 0:
-                continue
-            # resize hint to candidate size for simple correlation
-            hint_resized = np.array(Image.fromarray(hint_arr).resize((x2 - x1, y2 - y1), Image.LANCZOS))
-            # simple normalized correlation
-            h = hint_resized.astype(np.float32).ravel()
-            c = candidate.astype(np.float32).ravel()
-            h_c = h - h.mean()
-            c_c = c - c.mean()
-            denom = (np.sqrt((h_c**2).sum()) * np.sqrt((c_c**2).sum())) + 1e-8
-            score = float((h_c * c_c).sum() / denom)
+    # Fallback: random
+    log.warning("Using random selection (no CLIP model) for instruction: %s", keyword)
+    return random.randint(0, len(regions) - 1)
 
-            if score > best_score:
-                best_score = score
-                best_center = ((x1 + x2) // 2, (y1 + y2) // 2)
 
-        results.append(best_center)
-        log.debug("icon matched at %s with score %.3f", best_center, best_score)
+def _clip_select(crops: list[Image.Image], keyword: str) -> int:
+    """Use Chinese-CLIP to pick the best-matching crop for *keyword*."""
+    import torch
 
-    return results
+    model = _clip_model
+    preprocess = _clip_preprocess
+    tokenize = _clip_tokenizer
+
+    # Prepare images
+    images = torch.stack([preprocess(img) for img in crops])
+
+    # Prepare text
+    text = tokenize([keyword])
+
+    with torch.no_grad():
+        image_features = model.encode_image(images)
+        text_features = model.encode_text(text)
+
+        # Normalize
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+
+        # Cosine similarity
+        similarities = (image_features @ text_features.T).squeeze(1)
+
+    scores = similarities.cpu().numpy()
+    best_idx = int(np.argmax(scores))
+    log.info(
+        "CLIP scores for '%s': %s → selected region %d (score=%.3f)",
+        keyword,
+        [f"{s:.3f}" for s in scores],
+        best_idx,
+        scores[best_idx],
+    )
+    return best_idx

@@ -15,7 +15,7 @@ class TCaptchaSettings(BaseSettings):
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/131.0.0.0 Safari/537.36"
     )
-    base_url: str = "https://turing.captcha.qcloud.com"
+    base_url: str = "https://t.captcha.qq.com"
     timeout: float = 15.0
     max_retries: int = 3
     tdc_js_dir: pathlib.Path = pathlib.Path(__file__).resolve().parent / "tdc" / "js"

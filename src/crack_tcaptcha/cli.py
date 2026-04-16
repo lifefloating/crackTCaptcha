@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 
 
 def main(argv: list[str] | None = None) -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] %(levelname)s: %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
     parser = argparse.ArgumentParser(prog="crack-tcaptcha", description="TCaptcha automated solver")
     sub = parser.add_subparsers(dest="command")
 

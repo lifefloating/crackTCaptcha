@@ -11,16 +11,24 @@
 const { JSDOM } = require("jsdom");
 const https = require("https");
 const http = require("http");
+const zlib = require("zlib");
 
 function fetchScript(url) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith("https") ? https : http;
     client
-      .get(url, (res) => {
+      .get(url, { headers: { "Accept-Encoding": "gzip, deflate" } }, (res) => {
+        let stream = res;
+        const encoding = res.headers["content-encoding"];
+        if (encoding === "gzip") {
+          stream = res.pipe(zlib.createGunzip());
+        } else if (encoding === "deflate") {
+          stream = res.pipe(zlib.createInflate());
+        }
         let body = "";
-        res.on("data", (chunk) => (body += chunk));
-        res.on("end", () => resolve(body));
-        res.on("error", reject);
+        stream.on("data", (chunk) => (body += chunk));
+        stream.on("end", () => resolve(body));
+        stream.on("error", reject);
       })
       .on("error", reject);
   });
@@ -98,7 +106,7 @@ async function main() {
 
   const result = {
     collect: collect || "",
-    eks: info || "",
+    eks: typeof info === "string" ? info : JSON.stringify(info || ""),
     tlg: total_ms || 0,
   };
 

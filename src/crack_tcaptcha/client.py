@@ -1,17 +1,22 @@
 """HTTP layer for TCaptcha three-phase protocol.
 
 Responsibilities: prehandle, get_image, verify.  Zero knowledge of images or solvers.
+
+Uses scrapling's Fetcher (curl_cffi) with Chrome TLS impersonation to bypass
+Tencent's TLS-fingerprint-based bot detection (which returns 403 for plain
+httpx/requests/urllib).
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import logging
 import re
 import urllib.parse
 from typing import Any
 
-import httpx
+from scrapling.fetchers import Fetcher
 
 from crack_tcaptcha.exceptions import NetworkError
 from crack_tcaptcha.models import (
@@ -19,6 +24,7 @@ from crack_tcaptcha.models import (
     FgElem,
     PowConfig,
     PrehandleResp,
+    SelectRegion,
     VerifyResp,
 )
 from crack_tcaptcha.settings import settings
@@ -45,7 +51,10 @@ def parse_jsonp(raw: str) -> dict[str, Any]:
 
 
 class TCaptchaClient:
-    """Stateless HTTP facade for the three TCaptcha endpoints."""
+    """Stateless HTTP facade for the three TCaptcha endpoints.
+
+    Uses scrapling Fetcher with Chrome TLS fingerprint impersonation.
+    """
 
     def __init__(
         self,
@@ -58,20 +67,21 @@ class TCaptchaClient:
         self._ua = ua
         self._ua_b64 = base64.b64encode(ua.encode()).decode()
         self._timeout = timeout or settings.timeout
+        self._proxy = proxy or settings.proxy or None
 
-        transport_kw: dict[str, Any] = {}
-        if proxy or settings.proxy:
-            transport_kw["proxy"] = proxy or settings.proxy
-
-        self._client = httpx.Client(
-            headers={"User-Agent": ua},
-            timeout=self._timeout,
-            follow_redirects=True,
-            **transport_kw,
-        )
+        # Common kwargs forwarded to every Fetcher request
+        self._fetch_kw: dict[str, Any] = {
+            "headers": {"User-Agent": ua},
+            "impersonate": "chrome",
+            "stealthy_headers": True,
+            "follow_redirects": True,
+            "timeout": int(self._timeout),
+        }
+        if self._proxy:
+            self._fetch_kw["proxy"] = self._proxy
 
     def close(self) -> None:
-        self._client.close()
+        pass  # Fetcher is stateless — nothing to close
 
     def __enter__(self):
         return self
@@ -82,40 +92,60 @@ class TCaptchaClient:
     # ---- prehandle -------------------------------------------------------
 
     def prehandle(self, aid: str, *, subsid: int = 1, entry_url: str = "") -> PrehandleResp:
+        import random
+
+        callback = f"_aq_{random.randint(100000, 999999)}"
         params = {
             "aid": aid,
             "protocol": "https",
             "accver": "1",
-            "showtype": "embed",
+            "showtype": "popup",
             "ua": self._ua_b64,
             "noheader": "1",
             "fb": "1",
             "aged": "0",
+            "enableAged": "0",
             "enableDarkMode": "0",
-            "graession": "",
+            "grayscale": "1",
             "clientype": "2",
-            "cap_cd": "",
-            "uid": "",
             "lang": "zh-cn",
             "entry_url": entry_url,
             "elder_captcha": "0",
-            "js": "/tcaptcha-frame.5bae14dd.js",
-            "login_appid": "",
-            "wb": "2",
+            "js": "/tcaptcha-frame.b7f01caa.js",
+            "wb": "1",
             "subsid": str(subsid),
-            "callback": "_aq_000001",
-            "sess": "",
+            "callback": callback,
+            "dyeid": "0",
+            "support_media": "jpeg,png,gif,mp4,webm",
+            "version": "1.1.0",
         }
         url = f"{_BASE}/cap_union_prehandle"
         try:
-            resp = self._client.get(url, params=params)
-            resp.raise_for_status()
-        except httpx.HTTPError as e:
+            resp = Fetcher.get(url, params=params, **self._fetch_kw)
+            if resp.status != 200:
+                raise NetworkError(f"prehandle failed: HTTP {resp.status}")
+        except NetworkError:
+            raise
+        except Exception as e:
             raise NetworkError(f"prehandle failed: {e}") from e
 
-        data = parse_jsonp(resp.text)
+        # resp.body is bytes; decode to text for JSONP parsing
+        raw_text = resp.body.decode(resp.encoding or "utf-8", errors="replace")
+        data = parse_jsonp(raw_text)
         dyn = data["data"]["dyn_show_info"]
         comm = data["data"]["comm_captcha_cfg"]
+
+        # Log key fields for diagnostics
+        log = logging.getLogger(__name__)
+        log.info(
+            "prehandle dyn_show_info keys=%s instruction=%r show_type=%s data_type=%s regions=%d fg_elems=%d",
+            list(dyn.keys()), dyn.get("instruction", ""), dyn.get("show_type", ""),
+            dyn.get("bg_elem_cfg", {}).get("click_cfg", {}).get("data_type", []),
+            len(dyn.get("json_payload", {}).get("select_region_list", []))
+            if isinstance(dyn.get("json_payload"), dict)
+            else len(json.loads(dyn.get("json_payload", "{}")).get("select_region_list", [])),
+            len(dyn.get("fg_elem_list", [])),
+        )
 
         fg_list: list[FgElem] = []
         for elem in dyn.get("fg_elem_list", []):
@@ -134,16 +164,45 @@ class TCaptchaClient:
             target_md5=pow_cfg_raw.get("md5", ""),
         )
 
+        # click_image_uncheck fields
+        instruction = dyn.get("instruction", "")
+        show_type = dyn.get("show_type", "")
+        click_cfg = dyn.get("bg_elem_cfg", {}).get("click_cfg", {})
+        data_type = click_cfg.get("data_type", [])
+
+        json_payload_raw: dict = {}
+        select_regions: list[SelectRegion] = []
+        jp_str = dyn.get("json_payload", "")
+        if jp_str:
+            json_payload_raw = json.loads(jp_str) if isinstance(jp_str, str) else jp_str
+            for r in json_payload_raw.get("select_region_list", []):
+                rng = r["range"]
+                select_regions.append(SelectRegion(id=r["id"], range=(rng[0], rng[1], rng[2], rng[3])))
+
+        # bg size: may come as size_2d array [w, h] (click_image) or dict {width, height} (slider)
+        bg_cfg_raw = dyn["bg_elem_cfg"]
+        bg_size = bg_cfg_raw.get("size_2d", None)
+        if isinstance(bg_size, list):
+            bg_w, bg_h = bg_size[0], bg_size[1]
+        else:
+            bg_w = bg_cfg_raw.get("width", 672)
+            bg_h = bg_cfg_raw.get("height", 390)
+
         return PrehandleResp(
             sess=data.get("sess", ""),
             bg_elem_cfg=BgElemCfg(
-                img_url=dyn["bg_elem_cfg"]["img_url"],
-                width=dyn["bg_elem_cfg"].get("width", 672),
-                height=dyn["bg_elem_cfg"].get("height", 390),
+                img_url=bg_cfg_raw["img_url"],
+                width=bg_w,
+                height=bg_h,
             ),
             fg_elem_list=fg_list,
             pow_cfg=pow_cfg,
             tdc_path=comm.get("tdc_path", ""),
+            instruction=instruction,
+            show_type=show_type,
+            data_type=data_type,
+            select_regions=select_regions,
+            json_payload=json_payload_raw,
             raw=data,
         )
 
@@ -152,12 +211,17 @@ class TCaptchaClient:
     def get_image(self, img_url: str) -> bytes:
         """Download a captcha image (bg or fg sprite)."""
         full = img_url if img_url.startswith("http") else f"{_BASE}{img_url}"
+        # Image requests from captcha iframe use captcha.gtimg.com as referer
+        img_kw = {**self._fetch_kw, "headers": {**self._fetch_kw["headers"], "Referer": "https://captcha.gtimg.com/"}}
         try:
-            resp = self._client.get(full)
-            resp.raise_for_status()
-        except httpx.HTTPError as e:
+            resp = Fetcher.get(full, **img_kw)
+            if resp.status != 200:
+                raise NetworkError(f"image download failed: HTTP {resp.status}")
+        except NetworkError:
+            raise
+        except Exception as e:
             raise NetworkError(f"image download failed: {e}") from e
-        return resp.content
+        return resp.body
 
     def get_fg_image_url(self, bg_img_url: str) -> str:
         """Derive the foreground sprite URL from the background URL (img_index=1 → 0)."""
@@ -191,12 +255,17 @@ class TCaptchaClient:
         }
         url = f"{_BASE}/cap_union_new_verify"
         try:
-            resp = self._client.post(url, data=body)
-            resp.raise_for_status()
-        except httpx.HTTPError as e:
+            resp = Fetcher.post(url, data=body, **self._fetch_kw)
+            if resp.status != 200:
+                raise NetworkError(f"verify failed: HTTP {resp.status}")
+        except NetworkError:
+            raise
+        except Exception as e:
             raise NetworkError(f"verify failed: {e}") from e
 
         d = resp.json()
+        log = logging.getLogger(__name__)
+        log.info("verify response: %s", json.dumps(d, ensure_ascii=False))
         return VerifyResp(
             ok=(d.get("errorCode") == 0),
             ticket=d.get("ticket", ""),
