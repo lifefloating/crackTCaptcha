@@ -5,7 +5,7 @@ description = "Automated TCaptcha (Tencent CAPTCHA) solver — slider & icon-cli
 readme = "README.md"
 license = "GPL-3.0-or-later"
 requires-python = ">=3.10"
-authors = [{ name = "gehonglu" }]
+authors = [{ name = "fuyou" }]
 keywords = ["captcha", "tcaptcha", "tencent", "slider", "security-research"]
 classifiers = [
     "Development Status :: 3 - Alpha",
