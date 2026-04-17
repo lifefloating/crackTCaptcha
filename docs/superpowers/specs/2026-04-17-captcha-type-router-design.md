@@ -42,22 +42,36 @@ After this spec, `solve --appid 2046626712` returns a ticket, and `solve --appid
 
 ## 4. Evidence
 
-### 4.1 Real failing response (2046626712, captured in the user's log)
+### 4.1 Real failing response (2046626712, user log + flashTCaptcha `artifacts/harvest/user_failing_2046626712_2046626712_1.json`)
 
 ```
 prehandle dyn_show_info keys=[lang, instruction, bg_elem_cfg,
   verify_trigger_cfg, color_scheme, json_payload, watermark, show_type]
-instruction="蓝色的车"
+instruction="蓝色的蝴蝶"         # wrapped in U+201C / U+201D smart quotes
 show_type=click_image_uncheck
-data_type=[DynAnswerType_UC]
-regions=6
-fg_elems=0
+bg_elem_cfg.click_cfg={"mark_style": "mask", "data_type": ["DynAnswerType_UC"]}
+json_payload.select_region_list[0]={"id": 1, "range": [0, 34, 220, 254]}
+n_regions=6
 ```
 
 - `show_type=click_image_uncheck` and `data_type=[DynAnswerType_UC]` are the strong image_select discriminators.
 - 6 regions in `json_payload.select_region_list`, each with `id: 1..6` and `range: [x1, y1, x2, y2]`.
+- `select_region_list` entries carry **no `elem_id` field** — only `id`, `range`. The ans envelope therefore emits `elem_id: ""`.
 - `fg_elems=0` — no piece list, no sprite URL.
 - Image download log: `img_index=1` returned 56602 bytes; `img_index=0` returned **0 bytes**. For image_select we must not request fg at all.
+
+### 4.1a Full type cross-reference (flashTCaptcha `artifacts/harvest/compare.json`)
+
+| Type          | show_type            | instruction                | click_cfg.data_type | fg_binding_list | sprite_url | ins_elem_cfg |
+|---------------|----------------------|----------------------------|---------------------|-----------------|------------|--------------|
+| slide (real)  | —                    | "拖动下方滑块完成拼图"       | —                   | **present**     | present    | —            |
+| icon_click    | —                    | "请依次点击：尝 稠 车 "      | `[POS]`             | —               | —          | —            |
+| shape_click   | —                    | "请依次点击："               | `[POS]`             | —               | present    | **present**  |
+| silent        | —                    | null                        | —                   | —               | —          | —            |
+| spatial_vtt   | —                    | null (dyn empty)            | —                   | —               | —          | —            |
+| image_select  | **click_image_uncheck** | "蓝色的蝴蝶"              | `[UC]`              | —               | —          | —            |
+
+Observation that forced the classifier rewrite: `subsid=3` in the harvest is **labeled** slide but actually returned icon_click (instruction `"请依次点击：趁 乘 呈 "`). Real slide came from the `default_preload` (subsid=1) sample. Conclusion: **subsid does not deterministically pick type**; the classifier must work off response structure alone, and `fg_binding_list` — not `fg_elem_list` — is the exclusive slide marker.
 
 ### 4.2 Endpoint evidence from flashTCaptcha
 
@@ -169,15 +183,34 @@ Rules evaluated in order; first match wins:
 |---|---|---|---|
 | 1 | `image_select_show_type` | `dyn.get("show_type") == "click_image_uncheck"` | image_select |
 | 2 | `image_select_uc` | `"DynAnswerType_UC" in dyn.get("bg_elem_cfg", {}).get("click_cfg", {}).get("data_type", [])` | image_select |
-| 3 | `slide_fg_binding` | `"fg_binding_list" in dyn` OR (`dyn.get("fg_elem_list")` truthy AND `"click_cfg" not in dyn.get("bg_elem_cfg", {})`) | slide |
-| 4 | `icon_click_pos` | `"DynAnswerType_POS" in dyn.get("bg_elem_cfg", {}).get("click_cfg", {}).get("data_type", [])` AND `dyn.get("instruction", "").startswith("请依次点击")` | icon_click |
+| 3 | `slide_fg_binding` | `"fg_binding_list" in dyn` | slide |
+| 4 | `icon_click_pos` | `"DynAnswerType_POS" in click_cfg.data_type` AND `"ins_elem_cfg" not in dyn` AND `instruction.startswith("请依次点击")` AND post-colon text is non-empty | icon_click |
 | — | `fallback_unknown` | always | unknown |
+
+`fg_binding_list` is the **sole** slide discriminator. Verified against `artifacts/harvest/resp_default_199999861.jsonp` (real slide): `dyn_keys = [bg_elem_cfg, color_scheme, fg_binding_list, fg_elem_list, instruction, lang, sprite_url]`, no `click_cfg`. No other type in the 7-sample harvest carries `fg_binding_list`.
+
+Icon_click rule (rule 4) reference implementation:
+
+```python
+def _is_icon_click(dyn):
+    click = dyn.get("bg_elem_cfg", {}).get("click_cfg", {})
+    if "DynAnswerType_POS" not in click.get("data_type", []):
+        return False
+    # Exclude shape_click: it carries ins_elem_cfg and an empty-after-colon instruction.
+    if "ins_elem_cfg" in dyn:
+        return False
+    instr = dyn.get("instruction", "")
+    if not instr.startswith("请依次点击"):
+        return False
+    after = instr.split("：", 1)[1] if "：" in instr else ""
+    return bool(after.strip())
+```
 
 Rule ordering rationale:
 - Rule 1 uses the strongest signal when present. Tencent populates `show_type` only for image_select in our observations.
 - Rule 2 is the backstop for image_select responses that omit `show_type`. Safe because UC type is exclusive to image_select.
-- Rule 3 catches slide before rule 4, since slide never has `DynAnswerType_POS` in `click_cfg`.
-- Rule 4 requires the instruction prefix because future shape_click also has `DynAnswerType_POS` but empty post-colon instruction. When we add shape_click later, it'll slot in above rule 4 and take priority via `ins_elem_cfg` key.
+- Rule 3 catches slide via the exclusive `fg_binding_list` key.
+- Rule 4 guards against shape_click (which also has `POS` but empty post-colon instruction and carries `ins_elem_cfg`). Both the `ins_elem_cfg` absence and the non-empty-after-colon check are required — either alone is insufficient, since evidence shows shape_click's instruction is literally `"请依次点击："` (same prefix, empty tail).
 
 Output logged at INFO: `classified type=<t> rule=<r> instruction=<i>`. Unknown logged at WARNING with `dyn_keys=<list>` so future rules can be written without rerunning the appid.
 
@@ -198,9 +231,9 @@ def solve_one_attempt(client, pre, tdc_provider) -> VerifyResp:
         bg_size=(pre.bg_elem_cfg.width, pre.bg_elem_cfg.height),
     )
 
-    # 3. ans envelope
-    elem_id = pre.json_payload.get("elem_id", "")  # usually ""
-    ans = json.dumps([{"elem_id": elem_id, "type": "DynAnswerType_UC",
+    # 3. ans envelope. elem_id is fixed "" for image_select — the harvest
+    # sample's json_payload carries no elem_id field; only per-region id.
+    ans = json.dumps([{"elem_id": "", "type": "DynAnswerType_UC",
                        "data": str(region_id)}])
 
     # 4. PoW
@@ -229,6 +262,10 @@ def match_region(
 ```
 
 Implementation notes:
+- Strip instruction smart quotes and whitespace before building the prompt:
+  `instruction.strip().strip("\u201c\u201d\"'")`. Harvest shows Tencent wraps
+  the target phrase in U+201C/U+201D (e.g. `"蓝色的蝴蝶"`) — passing those
+  through hurts recognition.
 - Uses `httpx.Client` (sync) against `{TCAPTCHA_LLM_BASE_URL}/v1/chat/completions` with `Authorization: Bearer {TCAPTCHA_LLM_API_KEY}`.
 - Model = `TCAPTCHA_LLM_MODEL` (default `"gpt-5.4"`).
 - Single user message with the instruction text + a content part of type `image_url` containing `data:image/jpeg;base64,<b64>` of the bg.
@@ -354,7 +391,8 @@ All retryable errors drain `max_retries` before returning `SolveResult(ok=False,
 - **LLM answer format drift**. GPT-5.4 might return narrative text despite the JSON instruction. Mitigation: regex fallback extracts first `1..6` integer. If both fail, SolveError → retry. Worst case: fail all retries, user sees clear LLM error in logs.
 - **Endpoint regression**. Some appids might still work only under `t.captcha.qq.com`. Mitigation: if reported, make `TCAPTCHA_BASE_URL` env override do the job — no code change needed.
 - **Referer change breaks image fetch**. If `turing.captcha.qcloud.com` referer blocks image fetch for some reason, revert to `captcha.gtimg.com` (current value) via a single line. Evidence says it works; we'll confirm on first live run.
-- **`elem_id` assumption for image_select**. The spec says "elem_id is usually empty" based on the harvest sample. If Tencent later puts a real id in `json_payload.elem_id`, we read it — already handled via `.get("elem_id", "")`.
+- **`elem_id` assumption for image_select**. Harvest shows `json_payload` carries `select_region_list` (per-region `id`) and `prompt_id`, but no top-level `elem_id`. We emit `elem_id: ""` in the ans envelope. If Tencent later changes this, the failure mode is a predictable verify errorCode and we adjust.
+- **`sprite_pos` field unused**. bg_elem_cfg carries a `sprite_pos: [0,0]` for image_select that we ignore. No solver needs it; documenting here so future readers don't chase it.
 
 ## 8. Implementation order
 
