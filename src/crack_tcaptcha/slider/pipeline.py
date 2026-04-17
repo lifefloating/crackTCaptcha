@@ -126,6 +126,6 @@ def _one_attempt(
         pow_answer=pow_answer,
         pow_calc_time=pow_calc_time,
         collect=tdc_result.collect,
-        tlg=tdc_result.tlg or traj.total_ms,
+        tlg=len(tdc_result.collect),
         eks=tdc_result.eks,
     )

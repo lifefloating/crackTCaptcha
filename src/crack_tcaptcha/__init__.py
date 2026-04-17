@@ -11,10 +11,28 @@ Public API::
 
 from __future__ import annotations
 
+import os
+
 from crack_tcaptcha.models import SolveResult, TCaptchaType
-from crack_tcaptcha.tdc.nodejs_jsdom import NodeJsdomProvider
 
 __all__ = ["solve", "TCaptchaType", "SolveResult"]
+
+
+def _build_tdc_provider():
+    """Select TDC provider: scrapling (default, real browser) or nodejs_jsdom (legacy).
+
+    Controlled by env var ``TCAPTCHA_TDC_PROVIDER`` (``scrapling`` | ``nodejs``).
+    Default is ``scrapling`` because jsdom's synthetic environment is detected
+    by TCaptcha's behavior/fingerprint checks (errorCode=9).
+    """
+    choice = os.environ.get("TCAPTCHA_TDC_PROVIDER", "scrapling").lower()
+    if choice == "nodejs":
+        from crack_tcaptcha.tdc.nodejs_jsdom import NodeJsdomProvider
+
+        return NodeJsdomProvider()
+    from crack_tcaptcha.tdc.scrapling_browser import ScraplingBrowserProvider
+
+    return ScraplingBrowserProvider()
 
 
 def solve(
@@ -24,7 +42,7 @@ def solve(
     max_retries: int = 3,
 ) -> SolveResult:
     """Unified entry point — dispatches to the correct pipeline."""
-    tdc = NodeJsdomProvider()
+    tdc = _build_tdc_provider()
 
     if challenge_type == TCaptchaType.SLIDER:
         from crack_tcaptcha.slider.pipeline import solve_slider

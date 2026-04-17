@@ -19,7 +19,7 @@ class TCaptchaSettings(BaseSettings):
     timeout: float = 15.0
     max_retries: int = 3
     tdc_js_dir: pathlib.Path = pathlib.Path(__file__).resolve().parent / "tdc" / "js"
-    tdc_timeout: float = 10.0
+    tdc_timeout: float = 60.0
     proxy: str | None = None
 
 

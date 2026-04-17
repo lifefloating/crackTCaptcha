@@ -215,6 +215,8 @@ class TCaptchaClient:
         img_kw = {**self._fetch_kw, "headers": {**self._fetch_kw["headers"], "Referer": "https://captcha.gtimg.com/"}}
         try:
             resp = Fetcher.get(full, **img_kw)
+            log = logging.getLogger(__name__)
+            log.info("image download: %s → HTTP %d, %d bytes", full[:100], resp.status, len(resp.body))
             if resp.status != 200:
                 raise NetworkError(f"image download failed: HTTP {resp.status}")
         except NetworkError:
@@ -254,6 +256,9 @@ class TCaptchaClient:
             "eks": eks,
         }
         url = f"{_BASE}/cap_union_new_verify"
+        log = logging.getLogger(__name__)
+        log.info("verify POST: sess=%s... ans=%s pow_answer=%s pow_calc_time=%s collect_len=%d tlg=%s eks_len=%d",
+                 sess[:40], ans, pow_answer[:30], str(pow_calc_time), len(collect), str(tlg), len(eks))
         try:
             resp = Fetcher.post(url, data=body, **self._fetch_kw)
             if resp.status != 200:
@@ -264,12 +269,12 @@ class TCaptchaClient:
             raise NetworkError(f"verify failed: {e}") from e
 
         d = resp.json()
-        log = logging.getLogger(__name__)
         log.info("verify response: %s", json.dumps(d, ensure_ascii=False))
+        err_code_raw = d.get("errorCode", -1)
         return VerifyResp(
-            ok=(d.get("errorCode") == 0),
+            ok=(str(err_code_raw) == "0"),
             ticket=d.get("ticket", ""),
             randstr=d.get("randstr", ""),
-            error_code=d.get("errorCode", -1),
-            error_msg=d.get("errMsg", ""),
+            error_code=int(err_code_raw) if str(err_code_raw).lstrip("-").isdigit() else -1,
+            error_msg=d.get("errMessage", d.get("errMsg", "")),
         )

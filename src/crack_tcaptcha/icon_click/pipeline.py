@@ -105,20 +105,32 @@ def _solve_click_image(client, tdc_provider, pre, bg_bytes: bytes) -> VerifyResp
     # Log server-provided data_type for diagnostics
     log.info("server data_type=%s, show_type=%s", pre.data_type, pre.show_type)
 
+    # Log image details
+    log.info(
+        "bg image: url=%s... size=%d bytes, bg_size=%dx%d",
+        pre.bg_elem_cfg.img_url[:80], len(bg_bytes),
+        pre.bg_elem_cfg.width, pre.bg_elem_cfg.height,
+    )
+
+    # Log all regions with coordinates
+    for i, r in enumerate(pre.select_regions):
+        log.info("region[%d]: id=%d range=(%d,%d,%d,%d)", i, r.id, *r.range)
+
     # 3. select best matching region
     best_idx = select_best_match(bg_bytes, pre.select_regions, pre.instruction)
     selected = pre.select_regions[best_idx]
-    log.info("Selected region %d (id=%d)", best_idx, selected.id)
+    x1, y1, x2, y2 = selected.range
+    cx = (x1 + x2) // 2
+    cy = (y1 + y2) // 2
+    log.info("Selected region %d (id=%d): range=(%d,%d,%d,%d) click_center=(%d,%d)", best_idx, selected.id, x1, y1, x2, y2, cx, cy)
 
     # 4. PoW
     pow_answer, pow_calc_time = solve_pow(pre.pow_cfg.prefix, pre.pow_cfg.target_md5)
+    log.info("PoW: prefix=%s... answer=%s calc_time=%dms", pre.pow_cfg.prefix[:20], pow_answer[:30], pow_calc_time)
 
     # 5. build ans — use the server-specified data_type
     #    For click_image_uncheck with DynAnswerType_UC, data is the region id as string.
     #    For DynAnswerType_POS, data would be "x,y" coordinates.
-    x1, y1, x2, y2 = selected.range
-    cx = (x1 + x2) // 2
-    cy = (y1 + y2) // 2
     data_type = pre.data_type[0] if pre.data_type else "DynAnswerType_UC"
     if data_type == "DynAnswerType_UC":
         ans_data = str(selected.id)
@@ -135,10 +147,12 @@ def _solve_click_image(client, tdc_provider, pre, bg_bytes: bytes) -> VerifyResp
 
     # 6. trajectory: move to the center of the selected region, then click
     traj = generate_click_trajectory(0, 0, cx, cy)
+    log.info("trajectory: %d points, total_ms=%.0f", len(traj.points), traj.total_ms)
 
     tdc_url = pre.tdc_path
     if not tdc_url.startswith("http"):
         tdc_url = f"https://t.captcha.qq.com{tdc_url}" if tdc_url else ""
+    log.info("TDC url=%s", tdc_url[:100])
 
     tdc_result = _run_async(tdc_provider.collect(tdc_url, traj, settings.user_agent))
 
@@ -149,13 +163,15 @@ def _solve_click_image(client, tdc_provider, pre, bg_bytes: bytes) -> VerifyResp
     )
 
     # 7. verify
+    tlg_value = len(tdc_result.collect)
+    log.info("verify request: sess=%s... tlg=%d pow_calc_time=%d", pre.sess[:40], tlg_value, pow_calc_time)
     return client.verify(
         pre.sess,
         ans=ans,
         pow_answer=pow_answer,
         pow_calc_time=pow_calc_time,
         collect=tdc_result.collect,
-        tlg=tdc_result.tlg or traj.total_ms,
+        tlg=tlg_value,
         eks=tdc_result.eks,
     )
 
@@ -226,6 +242,6 @@ def _solve_legacy_icon_click(client, tdc_provider, pre, bg_bytes: bytes) -> Veri
         pow_answer=pow_answer,
         pow_calc_time=pow_calc_time,
         collect=tdc_result.collect,
-        tlg=tdc_result.tlg or combined.total_ms,
+        tlg=len(tdc_result.collect),
         eks=tdc_result.eks,
     )
