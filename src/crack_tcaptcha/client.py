@@ -29,7 +29,6 @@ from crack_tcaptcha.models import (
 )
 from crack_tcaptcha.settings import settings
 
-_BASE = settings.base_url
 _JSONP_RE = re.compile(r"^\s*\w+\s*\(\s*(.*)\s*\)\s*;?\s*$", re.DOTALL)
 
 
@@ -119,7 +118,7 @@ class TCaptchaClient:
             "support_media": "jpeg,png,gif,mp4,webm",
             "version": "1.1.0",
         }
-        url = f"{_BASE}/cap_union_prehandle"
+        url = f"{settings.base_url}/cap_union_prehandle"
         try:
             resp = Fetcher.get(url, params=params, **self._fetch_kw)
             if resp.status != 200:
@@ -210,15 +209,25 @@ class TCaptchaClient:
 
     def get_image(self, img_url: str) -> bytes:
         """Download a captcha image (bg or fg sprite)."""
-        full = img_url if img_url.startswith("http") else f"{_BASE}{img_url}"
-        # Image requests from captcha iframe use captcha.gtimg.com as referer
-        img_kw = {**self._fetch_kw, "headers": {**self._fetch_kw["headers"], "Referer": "https://captcha.gtimg.com/"}}
+        full = img_url if img_url.startswith("http") else f"{settings.base_url}{img_url}"
+        img_kw = {
+            **self._fetch_kw,
+            "headers": {
+                **self._fetch_kw["headers"],
+                "Referer": f"{settings.base_url}/",
+            },
+        }
         try:
             resp = Fetcher.get(full, **img_kw)
             log = logging.getLogger(__name__)
-            log.info("image download: %s → HTTP %d, %d bytes", full[:100], resp.status, len(resp.body))
+            log.info(
+                "image download: %s → HTTP %d, %d bytes",
+                full[:100], resp.status, len(resp.body),
+            )
             if resp.status != 200:
                 raise NetworkError(f"image download failed: HTTP {resp.status}")
+            if len(resp.body) == 0:
+                raise NetworkError(f"image download returned empty body: {full[:120]}")
         except NetworkError:
             raise
         except Exception as e:
@@ -227,7 +236,8 @@ class TCaptchaClient:
 
     def get_fg_image_url(self, bg_img_url: str) -> str:
         """Derive the foreground sprite URL from the background URL (img_index=1 → 0)."""
-        parsed = urllib.parse.urlparse(bg_img_url if bg_img_url.startswith("http") else f"{_BASE}{bg_img_url}")
+        full = bg_img_url if bg_img_url.startswith("http") else f"{settings.base_url}{bg_img_url}"
+        parsed = urllib.parse.urlparse(full)
         qs = urllib.parse.parse_qs(parsed.query)
         qs["img_index"] = ["0"]
         new_query = urllib.parse.urlencode({k: v[0] for k, v in qs.items()})
@@ -255,7 +265,7 @@ class TCaptchaClient:
             "tlg": str(tlg),
             "eks": eks,
         }
-        url = f"{_BASE}/cap_union_new_verify"
+        url = f"{settings.base_url}/cap_union_new_verify"
         log = logging.getLogger(__name__)
         log.info("verify POST: sess=%s... ans=%s pow_answer=%s pow_calc_time=%s collect_len=%d tlg=%s eks_len=%d",
                  sess[:40], ans, pow_answer[:30], str(pow_calc_time), len(collect), str(tlg), len(eks))
