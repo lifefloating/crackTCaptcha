@@ -214,7 +214,7 @@ class TCaptchaClient:
             **self._fetch_kw,
             "headers": {
                 **self._fetch_kw["headers"],
-                "Referer": f"{settings.base_url}/",
+                "Referer": "https://captcha.gtimg.com/",
             },
         }
         try:
