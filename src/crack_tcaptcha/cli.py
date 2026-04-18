@@ -19,9 +19,9 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command")
 
     solve_p = sub.add_parser("solve", help="Solve a TCaptcha challenge")
-    solve_p.add_argument("--type", choices=["slider", "icon_click"], default="slider", help="Challenge type")
     solve_p.add_argument("--appid", required=True, help="TCaptcha APP_ID")
     solve_p.add_argument("--retries", type=int, default=3, help="Max retry attempts")
+    solve_p.add_argument("--entry-url", default="", help="Parent page URL (optional)")
     solve_p.add_argument("--json", action="store_true", dest="as_json", help="Output as JSON")
 
     args = parser.parse_args(argv)
@@ -30,10 +30,9 @@ def main(argv: list[str] | None = None) -> None:
         parser.print_help()
         sys.exit(1)
 
-    from crack_tcaptcha import TCaptchaType, solve
+    from crack_tcaptcha import solve
 
-    challenge = TCaptchaType.SLIDER if args.type == "slider" else TCaptchaType.ICON_CLICK
-    result = solve(appid=args.appid, challenge_type=challenge, max_retries=args.retries)
+    result = solve(appid=args.appid, max_retries=args.retries, entry_url=args.entry_url)
 
     if args.as_json:
         print(json.dumps(result.model_dump(), ensure_ascii=False, indent=2))
