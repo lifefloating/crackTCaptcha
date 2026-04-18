@@ -77,6 +77,7 @@ def solve_one_attempt(
         traj_segments.append(generate_click_trajectory(prev_x, prev_y, cx, cy))
         prev_x, prev_y = cx, cy
     combined = merge_trajectories(traj_segments)
+    combined = combined.model_copy(update={"kind": "click"})
 
     return finish_with_verify(
         client, pre, tdc_provider,

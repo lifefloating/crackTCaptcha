@@ -11,21 +11,15 @@ Public API::
 
 from __future__ import annotations
 
-import os
-
 from crack_tcaptcha.models import SolveResult
 
 __all__ = ["solve", "SolveResult"]
 
 
 def _build_tdc_provider():
-    """Select TDC provider via TCAPTCHA_TDC_PROVIDER env (``scrapling`` | ``nodejs``)."""
-    choice = os.environ.get("TCAPTCHA_TDC_PROVIDER", "scrapling").lower()
-    if choice == "nodejs":
-        from crack_tcaptcha.tdc.nodejs_jsdom import NodeJsdomProvider
-        return NodeJsdomProvider()
-    from crack_tcaptcha.tdc.scrapling_browser import ScraplingBrowserProvider
-    return ScraplingBrowserProvider()
+    """Build the TDC provider. Always Node.js + jsdom (the only supported path)."""
+    from crack_tcaptcha.tdc.nodejs_jsdom import NodeJsdomProvider
+    return NodeJsdomProvider()
 
 
 def solve(appid: str, *, max_retries: int | None = None, entry_url: str = "") -> SolveResult:

@@ -12,7 +12,7 @@ from crack_tcaptcha.pipelines._common import finish_with_verify
 from crack_tcaptcha.pow import solve_pow
 from crack_tcaptcha.solvers.llm_vision import match_region
 from crack_tcaptcha.tdc.provider import TDCProvider
-from crack_tcaptcha.trajectory import generate_click_trajectory
+from crack_tcaptcha.trajectory import build_image_select_trajectory
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ def solve_one_attempt(
     selected = next(r for r in pre.select_regions if r.id == region_id)
     x1, y1, x2, y2 = selected.range
     cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-    traj = generate_click_trajectory(0, 0, cx, cy)
+    traj = build_image_select_trajectory(cx, cy)
     log.info("image_select click center=(%d,%d) for region %d", cx, cy, region_id)
 
     return finish_with_verify(
