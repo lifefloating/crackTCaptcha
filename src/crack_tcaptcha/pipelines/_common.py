@@ -11,7 +11,7 @@ import asyncio
 import logging
 
 from crack_tcaptcha.client import TCaptchaClient
-from crack_tcaptcha.models import PrehandleResp, VerifyResp
+from crack_tcaptcha.models import PrehandleResp, Trajectory, VerifyResp
 from crack_tcaptcha.settings import settings
 from crack_tcaptcha.tdc.provider import TDCProvider
 
@@ -49,11 +49,15 @@ def finish_with_verify(
     ans_json: str,
     pow_answer: str,
     pow_calc_time: int,
-    trajectory,
+    trajectory: Trajectory,
 ) -> VerifyResp:
     """TDC collect + verify POST. Shared across all pipelines."""
     tdc_url = resolve_tdc_url(pre.tdc_path)
     tdc_result = run_async(tdc_provider.collect(tdc_url, trajectory, settings.user_agent))
+    log.debug(
+        "TDC collect: collect=%d bytes, eks=%s",
+        len(tdc_result.collect), tdc_result.eks[:50],
+    )
     return client.verify(
         pre.sess,
         ans=ans_json,
