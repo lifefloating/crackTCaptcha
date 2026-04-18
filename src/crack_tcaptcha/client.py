@@ -118,7 +118,7 @@ class TCaptchaClient:
             "support_media": "jpeg,png,gif,mp4,webm",
             "version": "1.1.0",
         }
-        url = f"{settings.prehandle_url}/cap_union_prehandle"
+        url = f"{settings.base_url}/cap_union_prehandle"
         try:
             resp = Fetcher.get(url, params=params, **self._fetch_kw)
             if resp.status != 200:
