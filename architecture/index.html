@@ -1,0 +1,1008 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="腾讯 TCaptcha 自动化求解器文档">
+      
+      
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../slider/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>架构 - crack-tcaptcha 文档</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href=".." title="crack-tcaptcha 文档" class="md-header__button md-logo" aria-label="crack-tcaptcha 文档" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            crack-tcaptcha 文档
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              架构
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="crack-tcaptcha 文档" class="md-nav__button md-logo" aria-label="crack-tcaptcha 文档" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    crack-tcaptcha 文档
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    入门
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    概览
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    架构
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    架构
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分层架构
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        三段式协议
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="三段式协议">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1cap_union_prehandle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        阶段 1：cap_union_prehandle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2cap_union_new_getcapbysig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        阶段 2：cap_union_new_getcapbysig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3cap_union_new_verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        阶段 3：cap_union_new_verify
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pipeline-solver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline ↔ Solver 映射
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdcjs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC.js 桥接
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#http" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP 层设计
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    验证码类型
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    验证码类型
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../slider/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    滑块 (slider)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../icon-click/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    图标点击 (icon_click)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../word-click/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    文字点选 (word_click)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../image-select/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    图像选择 (image_select)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    深入
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    深入
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reverse-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    反向工程笔记
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分层架构
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        三段式协议
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="三段式协议">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1cap_union_prehandle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        阶段 1：cap_union_prehandle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2cap_union_new_getcapbysig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        阶段 2：cap_union_new_getcapbysig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3cap_union_new_verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        阶段 3：cap_union_new_verify
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pipeline-solver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline ↔ Solver 映射
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdcjs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC.js 桥接
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#http" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP 层设计
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="_1">架构总览</h1>
+<h2 id="_2">分层架构</h2>
+<pre><code>┌───────────────────────────────────────────────────────────────┐
+│  solve(appid, ...)                  ← crack_tcaptcha/__init__ │
+└──────────────┬────────────────────────────────────────────────┘
+               │  classify(dyn)  →  captcha_type
+               ▼
+┌───────────────────────────────────────────────────────────────┐
+│  pipelines/                                                    │
+│    ├─ slide.py         ── OpenCV NCC                           │
+│    ├─ icon_click.py    ── ddddocr                              │
+│    ├─ word_click.py    ── ddddocr + llm_vision                 │
+│    ├─ image_select.py  ── llm_vision                           │
+│    └─ _common.py       ── finish_with_verify / run_async       │
+└──────────────┬────────────────────────────────────────────────┘
+               │ uses                                   uses
+               ▼                                        ▼
+   ┌──────────────────────┐             ┌──────────────────────┐
+   │ solvers/             │             │ tdc/                 │
+   │   └─ llm_vision.py   │             │   ├─ provider.py     │
+   │      (OpenAI 兼容)    │             │   └─ nodejs_jsdom.py │
+   └──────────────────────┘             └──────────────────────┘
+               │                                        │
+               └──────────┬─────────────────────────────┘
+                          ▼
+      ┌──────────────────────────────────────────┐
+      │ client.py (HTTP 三段式 + JSONP 解壳)       │
+      │ pow.py   (MD5 PoW)                        │
+      │ trajectory.py (滑动/点击轨迹生成)          │
+      │ models.py (pydantic 响应模型)              │
+      │ settings.py (pydantic-settings)           │
+      └──────────────────────────────────────────┘
+</code></pre>
+<p>依赖方向严格自上而下：<code>pipelines</code> 依赖 <code>solvers</code>、<code>tdc</code>、<code>client</code>；<code>solvers</code> 和 <code>tdc</code> 互不依赖。</p>
+<h2 id="_3">三段式协议</h2>
+<p>所有端点都在 <code>https://turing.captcha.qcloud.com</code>（可通过 <code>TCAPTCHA_BASE_URL</code> 覆盖）。</p>
+<pre><code>┌──────────┐   prehandle    ┌──────────┐   getcapbysig   ┌──────────┐
+│  Client   │──────────────▶│  Server   │◀───────────────│  Client   │
+│           │◀──────────────│           │───────────────▶│           │
+│           │ sess, pow_cfg │           │  bg / fg PNG   │           │
+│           │ fg_elem_list  │           │                │           │
+│           │               │           │                │           │
+│           │    verify     │           │                │           │
+│           │──────────────▶│           │                │           │
+│           │◀──────────────│           │                │           │
+│           │ ticket/randstr│           │                │           │
+└──────────┘               └──────────┘                └──────────┘
+</code></pre>
+<h3 id="1cap_union_prehandle">阶段 1：<code>cap_union_prehandle</code></h3>
+<ul>
+<li>初始化会话，返回 <code>sess</code>、<code>pow_cfg</code>、<code>dyn_show_info</code>、<code>bg_elem_cfg</code>、可选的 <code>fg_elem_list</code></li>
+<li>每次重试 <code>subsid</code> 会自增</li>
+<li>返回体是 JSONP，<code>client.py</code> 中 <code>parse_jsonp</code> 剥壳</li>
+</ul>
+<h3 id="2cap_union_new_getcapbysig">阶段 2：<code>cap_union_new_getcapbysig</code></h3>
+<ul>
+<li><code>img_index=1</code> → 背景图</li>
+<li><code>img_index=0</code> → 前景精灵图（slider 的拼图块；icon_click 的提示图标）</li>
+<li>滑块：背景 672×390 RGB PNG，前景 682×620 RGBA PNG</li>
+<li>文字点选 / 图像选择：只需要背景图（提示词内嵌在 <code>instruction</code>）</li>
+</ul>
+<h3 id="3cap_union_new_verify">阶段 3：<code>cap_union_new_verify</code></h3>
+<p>POST 字段：<code>ans</code>、<code>pow_answer</code>、<code>pow_calc_time</code>、<code>collect</code>、<code>tlg</code>、<code>eks</code>。成功返回 <code>ticket</code> + <code>randstr</code>。</p>
+<h2 id="pipeline-solver">Pipeline ↔ Solver 映射</h2>
+<table>
+<thead>
+<tr>
+<th>Pipeline</th>
+<th>核心 Solver</th>
+<th>可选/回退</th>
+<th>依赖包</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>slide</code></td>
+<td><code>solvers</code>（内嵌 NCC，见 <code>pipelines/slide.py</code> 的 <code>SliderSolver</code>）</td>
+<td>——</td>
+<td><code>numpy</code>、<code>Pillow</code></td>
+</tr>
+<tr>
+<td><code>icon_click</code></td>
+<td><code>ddddocr</code> 检测 + 模板匹配</td>
+<td>——</td>
+<td><code>ddddocr</code>（extra <code>icon-click</code>）</td>
+</tr>
+<tr>
+<td><code>word_click</code></td>
+<td><code>solvers/llm_vision.locate_chars</code></td>
+<td><code>ddddocr</code> 按 bbox 分类 + 子串匹配</td>
+<td><code>ddddocr</code> + OpenAI 兼容 API</td>
+</tr>
+<tr>
+<td><code>image_select</code></td>
+<td><code>solvers/llm_vision.match_region</code></td>
+<td>——</td>
+<td>OpenAI 兼容 API</td>
+</tr>
+</tbody>
+</table>
+<p>自动路由：<code>captcha_type.classify(dyn_show_info)</code> 是一个纯函数分类器，按规则顺序返回 <code>slide</code> / <code>icon_click</code> / <code>word_click</code> / <code>image_select</code> / <code>unknown</code>。规则命中后 <code>pipelines.dispatch</code> 将请求分发到对应的 pipeline。</p>
+<h2 id="tdcjs">TDC.js 桥接</h2>
+<pre><code>Python ──subprocess──▶ Node.js + jsdom ──eval──▶ tdc.js
+                              │
+                              ▼
+                {collect, eks, tokenid, pow_answer}
+</code></pre>
+<p><code>tdc/provider.py</code> 定义了 <code>TDCProvider</code> Protocol：任何实现 <code>async collect(tdc_url, trajectory, ua) -&gt; TDCResult</code> 的对象都可以被 pipeline 使用。当前仅实现 <code>NodeJsdomProvider</code>（<code>tdc/nodejs_jsdom.py</code>），未来可以扩展到 Puppeteer 或其他浏览器桥接方案而不需要改动 pipeline 代码。</p>
+<p>关键 jsdom 配置在 <code>tdc/js/tdc_executor.js</code>：<code>pretendToBeVisual: true</code>、<code>runScripts: "dangerously"</code>，并 patch <code>screen</code>、<code>innerWidth/Height</code>、<code>devicePixelRatio</code>、<code>navigator.webdriver</code>。详细检测向量见 <a href="../reverse-notes/">反向笔记</a>。</p>
+<h2 id="http">HTTP 层设计</h2>
+<p><code>client.py</code> 使用 <code>scrapling</code> 的 <code>Fetcher</code>（底层 <code>curl_cffi</code>）做 Chrome TLS 指纹模拟，绕过腾讯基于 TLS 指纹的 bot 检测。普通的 <code>httpx</code> / <code>requests</code> / <code>urllib</code> 在该端点会直接收到 403。</p>
+<p><code>entry_url</code> 参数可选，用于为请求附加合理的 <code>Referer</code> / <code>Origin</code>。在真实业务站点嵌入时建议传入，空值也能跑通但风控更严格。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
