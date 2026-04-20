@@ -1,4 +1,4 @@
-"""GPT-5.4 vision client (OpenAI-compatible relay) for image_select captcha.
+"""GPT-5.4 vision client (OpenAI-compatible relay) for image_select + word_click captcha.
 
 Expects TCAPTCHA_LLM_API_KEY, TCAPTCHA_LLM_BASE_URL, TCAPTCHA_LLM_MODEL in env / .env.
 """
@@ -6,12 +6,14 @@ Expects TCAPTCHA_LLM_API_KEY, TCAPTCHA_LLM_BASE_URL, TCAPTCHA_LLM_MODEL in env /
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 import re
 from typing import Any
 
 import httpx
+from PIL import Image, ImageDraw
 
 from crack_tcaptcha.exceptions import SolveError
 from crack_tcaptcha.models import SelectRegion
@@ -117,4 +119,128 @@ def match_region(
     raise SolveError(f"LLM call failed after 2 attempts: {last_err}")
 
 
-__all__ = ["match_region"]
+# ---------------------------------------------------------------------------
+# word_click: locate target chars on bg given detector bboxes
+# ---------------------------------------------------------------------------
+
+
+def _annotate_bg(bg_bytes: bytes, bboxes: list[tuple[int, int, int, int]]) -> bytes:
+    """Return bg PNG with each bbox outlined + labeled 1..N to help the LLM."""
+    img = Image.open(io.BytesIO(bg_bytes)).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    for i, (x1, y1, x2, y2) in enumerate(bboxes, start=1):
+        draw.rectangle((x1, y1, x2, y2), outline=(255, 0, 0), width=3)
+        lx, ly = x1 + 2, max(0, y1 - 18)
+        draw.rectangle((lx, ly, lx + 22, ly + 18), fill=(255, 0, 0))
+        draw.text((lx + 5, ly + 2), str(i), fill=(255, 255, 255))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _build_word_click_prompt(
+    targets: list[str], bboxes: list[tuple[int, int, int, int]]
+) -> str:
+    lines = [
+        "The image shows several Chinese characters, each highlighted with a red box labeled 1, 2, 3, ...",
+        f"There are {len(bboxes)} labeled boxes on the image.",
+        "",
+        "TASK: For each target character below, identify which labeled box contains that character.",
+        f"Target characters (in order): {targets}",
+        "",
+        "Respond with ONLY a JSON object mapping each target character to its box number. Example:",
+        '{"' + targets[0] + '": 2, "' + (targets[1] if len(targets) > 1 else "X") + '": 1}',
+        "If a target character does NOT appear in any box, map it to 0.",
+    ]
+    return "\n".join(lines)
+
+
+def _parse_char_to_box(text: str, targets: list[str], n_boxes: int) -> dict[str, int]:
+    m = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+    candidate = m.group(0) if m else text
+    try:
+        obj = json.loads(candidate)
+    except json.JSONDecodeError:
+        try:
+            obj = json.loads(candidate.replace("'", '"'))
+        except json.JSONDecodeError as e:
+            raise SolveError(f"LLM word_click: unparseable JSON: {text[:200]!r}") from e
+    result: dict[str, int] = {}
+    for ch in targets:
+        v = obj.get(ch)
+        try:
+            iv = int(v)
+        except (TypeError, ValueError):
+            iv = 0
+        if iv < 0 or iv > n_boxes:
+            iv = 0
+        result[ch] = iv
+    return result
+
+
+def locate_chars(
+    bg_bytes: bytes,
+    *,
+    targets: list[str],
+    bboxes: list[tuple[int, int, int, int]],
+) -> dict[str, int]:
+    """Ask the LLM which labeled bbox contains each target char.
+
+    Returns dict {char: box_index_1_based}. 0 means "LLM says not found".
+    Raises SolveError on config / transport / parse failure.
+    """
+    if not settings.llm_api_key or not settings.llm_base_url:
+        raise SolveError("LLM not configured: set TCAPTCHA_LLM_API_KEY and TCAPTCHA_LLM_BASE_URL")
+    if not bboxes:
+        raise SolveError("LLM word_click: empty bboxes")
+
+    annotated = _annotate_bg(bg_bytes, bboxes)
+    prompt = _build_word_click_prompt(targets, bboxes)
+    b64 = base64.b64encode(annotated).decode()
+
+    payload: dict[str, Any] = {
+        "model": settings.llm_model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{b64}"},
+                    },
+                ],
+            }
+        ],
+        "max_tokens": 128,
+        "temperature": 0,
+    }
+
+    url = f"{settings.llm_base_url.rstrip('/')}/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {settings.llm_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    last_err: Exception | None = None
+    for attempt in (1, 2):
+        try:
+            with httpx.Client(timeout=settings.llm_timeout) as http:
+                resp = http.post(url, json=payload, headers=headers)
+            if resp.status_code != 200:
+                raise SolveError(f"LLM HTTP {resp.status_code}: {resp.text[:200]}")
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            log.info("LLM word_click raw (attempt %d): %s", attempt, content[:300])
+            mapping = _parse_char_to_box(content, targets, len(bboxes))
+            log.info("LLM word_click mapping: %s", mapping)
+            return mapping
+        except SolveError:
+            raise
+        except Exception as e:
+            last_err = e
+            log.warning("LLM word_click attempt %d failed: %s", attempt, e)
+    raise SolveError(f"LLM word_click failed after 2 attempts: {last_err}")
+
+
+__all__ = ["match_region", "locate_chars"]

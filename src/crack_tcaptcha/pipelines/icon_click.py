@@ -60,15 +60,17 @@ def solve_one_attempt(
 
     pow_answer, pow_calc_time = solve_pow(pre.pow_cfg.prefix, pre.pow_cfg.target_md5)
 
-    ans_list = []
-    for elem, (cx, cy) in zip(pre.fg_elem_list, click_coords, strict=True):
-        ans_list.append(
-            {
-                "elem_id": elem.elem_id,
-                "type": "DynAnswerType_POS",
-                "data": f"{cx},{cy}",
-            }
-        )
+    # Answer format aligned with tx-word reference: elem_id is a 1-based
+    # sequence index (not the elem_id from prehandle), type is POS, data
+    # is the click center coord string "x,y".
+    ans_list = [
+        {
+            "elem_id": i + 1,
+            "type": "DynAnswerType_POS",
+            "data": f"{cx},{cy}",
+        }
+        for i, (cx, cy) in enumerate(click_coords)
+    ]
     ans = json.dumps(ans_list)
 
     traj_segments = []

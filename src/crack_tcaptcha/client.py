@@ -94,6 +94,8 @@ class TCaptchaClient:
         import random
 
         callback = f"_aq_{random.randint(100000, 999999)}"
+        # Parameters aligned with real Chrome TJCaptcha.js (2.0) traffic for
+        # turing.captcha.qcloud.com. Captured via CDP 2026-04-20 for aid=191743853.
         params = {
             "aid": aid,
             "protocol": "https",
@@ -107,20 +109,25 @@ class TCaptchaClient:
             "enableDarkMode": "0",
             "grayscale": "1",
             "clientype": "2",
+            "cap_cd": "",
+            "uid": "",
             "lang": "zh-cn",
             "entry_url": entry_url,
             "elder_captcha": "0",
-            "js": "/tcaptcha-frame.b7f01caa.js",
+            "js": "/tgJCap.627c7f42.js",
+            "login_appid": "",
             "wb": "1",
             "subsid": str(subsid),
             "callback": callback,
-            "dyeid": "0",
-            "support_media": "jpeg,png,gif,mp4,webm",
-            "version": "1.1.0",
+            "sess": "",
         }
         url = f"{settings.base_url}/cap_union_prehandle"
+        # Real Chrome sends Referer = entry_url's origin + '/'. Fall back to
+        # entry_url itself (or base_url) when no entry_url given.
+        referer = entry_url or settings.base_url
+        fetch_kw = {**self._fetch_kw, "headers": {**self._fetch_kw["headers"], "Referer": referer}}
         try:
-            resp = Fetcher.get(url, params=params, **self._fetch_kw)
+            resp = Fetcher.get(url, params=params, **fetch_kw)
             if resp.status != 200:
                 raise NetworkError(f"prehandle failed: HTTP {resp.status}")
         except NetworkError:
@@ -214,7 +221,7 @@ class TCaptchaClient:
             **self._fetch_kw,
             "headers": {
                 **self._fetch_kw["headers"],
-                "Referer": "https://captcha.gtimg.com/",
+                "Referer": "https://turing.captcha.gtimg.com/",
             },
         }
         try:

@@ -28,9 +28,9 @@ const envPatch = require("./env_patch");
 const invariants = require("./invariants");
 const eventDispatch = require("./event_dispatch");
 
-const ORIGIN = "https://t.captcha.qq.com";
-const LANDING = "https://t.captcha.qq.com/template/drag_ele.html";
-const REFERER = "https://captcha.gtimg.com/";
+const ORIGIN = "https://turing.captcha.qcloud.com";
+const LANDING = "https://turing.captcha.gtimg.com/1/template/drag_ele.html";
+const REFERER = "https://turing.captcha.gtimg.com/";
 
 function log(msg) {
   // Only visible when TCAPTCHA_TDC_DEBUG=1 (Python side logs stderr to debug).

@@ -9,7 +9,7 @@ from crack_tcaptcha.captcha_type import classify
 from crack_tcaptcha.client import TCaptchaClient
 from crack_tcaptcha.exceptions import TCaptchaError, UnsupportedCaptchaType
 from crack_tcaptcha.models import PrehandleResp, SolveResult, VerifyResp
-from crack_tcaptcha.pipelines import icon_click, image_select, slide
+from crack_tcaptcha.pipelines import icon_click, image_select, slide, word_click
 from crack_tcaptcha.settings import settings
 from crack_tcaptcha.tdc.provider import TDCProvider
 
@@ -20,6 +20,7 @@ _SolveFn = Callable[[TCaptchaClient, PrehandleResp, TDCProvider], VerifyResp]
 REGISTRY: dict[str, _SolveFn] = {
     "slide": slide.solve_one_attempt,
     "icon_click": icon_click.solve_one_attempt,
+    "word_click": word_click.solve_one_attempt,
     "image_select": image_select.solve_one_attempt,
 }
 
