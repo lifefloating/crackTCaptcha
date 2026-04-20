@@ -106,3 +106,57 @@ def merge_trajectories(segments: list[Trajectory], pause_range: tuple[int, int] 
             offset += random.randint(*pause_range)
 
     return Trajectory(points=merged, total_ms=offset)
+
+
+def _jittered_drift(cx: int, cy: int, *, n: int = 5, spread: int = 80, start_t: int = 0) -> tuple[list[TrajectoryPoint], int]:
+    """Pre-click reading drift: n random waypoints near (cx, cy)."""
+    pts: list[TrajectoryPoint] = []
+    t = start_t
+    for _ in range(n):
+        dx = random.randint(-spread, spread)
+        dy = random.randint(-spread // 2, spread // 2)
+        t += random.randint(80, 180)
+        pts.append(TrajectoryPoint(x=cx + dx, y=cy + dy, t=t))
+    return pts, t
+
+
+def build_click_trajectory(
+    target_x: int,
+    target_y: int,
+    *,
+    canvas_w: int = 672,
+    canvas_h: int = 480,
+) -> Trajectory:
+    """Single-click trajectory: random drift → Bézier approach → target point.
+
+    The last point MUST be (target_x, target_y); event_dispatch.js treats it as the click site.
+    """
+    # random start on canvas but not too close to target
+    sx = random.randint(50, canvas_w - 50)
+    sy = random.randint(50, canvas_h - 50)
+    drift_center_x = (sx + target_x) // 2
+    drift_center_y = (sy + target_y) // 2
+
+    drift_pts, drift_end_t = _jittered_drift(drift_center_x, drift_center_y, n=random.randint(4, 6))
+
+    # approach segment (Bézier)
+    approach = generate_click_trajectory(
+        drift_pts[-1].x if drift_pts else sx,
+        drift_pts[-1].y if drift_pts else sy,
+        target_x,
+        target_y,
+        duration_ms=random.randint(250, 500),
+    )
+    approach_pts = [TrajectoryPoint(x=p.x, y=p.y, t=p.t + drift_end_t) for p in approach.points]
+
+    all_pts = drift_pts + approach_pts
+    if not all_pts or (all_pts[-1].x, all_pts[-1].y) != (target_x, target_y):
+        all_pts.append(TrajectoryPoint(x=target_x, y=target_y, t=(all_pts[-1].t + 20) if all_pts else 0))
+
+    return Trajectory(points=all_pts, total_ms=all_pts[-1].t, kind="click")
+
+
+def build_image_select_trajectory(target_x: int, target_y: int) -> Trajectory:
+    """image_select trajectory: same shape as click, kind='multi_click' for JS-side routing."""
+    traj = build_click_trajectory(target_x, target_y)
+    return Trajectory(points=traj.points, total_ms=traj.total_ms, kind="multi_click")

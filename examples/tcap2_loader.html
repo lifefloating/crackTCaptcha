@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-cn">
+<head>
+<meta charset="utf-8">
+<title>TCaptcha 2.0 loader aid=YOUR_APPID</title>
+<script src="https://turing.captcha.qcloud.com/TJCaptcha.js"></script>
+<style>
+  body { font-family: sans-serif; padding: 24px; background: #fafafa; }
+  #tcaptcha { width: 360px; height: 56px; border: 1px solid #ddd; margin: 12px 0; }
+  #trigger { padding: 12px 24px; font-size: 16px; }
+  pre { background: #fff; padding: 12px; border: 1px solid #eee; white-space: pre-wrap; max-width: 720px; }
+  .ok { color: #0a7b34; font-weight: bold; font-size: 18px; }
+  .fail { color: #b40000; font-weight: bold; font-size: 18px; }
+</style>
+</head>
+<body>
+<h1>TCaptcha 2.0 — aid=YOUR_APPID</h1>
+<div id="tcaptcha"></div>
+<button id="trigger">触发验证码</button>
+<h3>callback result</h3>
+<div id="status">(waiting)</div>
+<pre id="out">(waiting)</pre>
+
+<script>
+function cb(res) {
+  window.__TCAP_RESULT = res;
+  document.getElementById('out').textContent = JSON.stringify(res, null, 2);
+  var st = document.getElementById('status');
+  if (res && res.ret === 0 && res.ticket && !String(res.ticket).startsWith('trerror')) {
+    st.className = 'ok';
+    st.textContent = '✅ 过了！ticket=' + String(res.ticket).slice(0, 40) + '...';
+  } else if (res && String(res.ticket || '').startsWith('trerror')) {
+    st.className = 'fail';
+    st.textContent = '⚠️ 降级 ticket：' + (res.errorMessage || '');
+  } else {
+    st.className = 'fail';
+    st.textContent = '❌ 失败：ret=' + (res && res.ret) + ' msg=' + (res && res.errorMessage || '');
+  }
+}
+var cap = new TencentCaptcha(
+  document.getElementById('tcaptcha'),
+  'YOUR_APPID',
+  cb,
+  {}
+);
+document.getElementById('trigger').addEventListener('click', function () {
+  cap.show();
+});
+setTimeout(function () { try { cap.show(); } catch (e) { console.error(e); } }, 500);
+</script>
+</body>
+</html>

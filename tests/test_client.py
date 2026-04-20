@@ -99,9 +99,7 @@ class TestGetImage:
     @pytest.mark.skip(reason=_SKIP_REASON)
     @respx.mock
     def test_download(self):
-        respx.get("https://turing.captcha.qcloud.com/img?x=1").mock(
-            return_value=httpx.Response(200, content=b"\x89PNG_FAKE")
-        )
+        respx.get("https://turing.captcha.qcloud.com/img?x=1").mock(return_value=httpx.Response(200, content=b"\x89PNG_FAKE"))
         with TCaptchaClient() as c:
             data = c.get_image("/img?x=1")
         assert data == b"\x89PNG_FAKE"

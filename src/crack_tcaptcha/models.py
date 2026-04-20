@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
+
+TrajectoryKind = Literal["slider", "click", "multi_click"]
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -102,6 +104,7 @@ class TrajectoryPoint(BaseModel):
 class Trajectory(BaseModel):
     points: list[TrajectoryPoint]
     total_ms: int
+    kind: TrajectoryKind = "slider"
 
 
 # ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image
 
 from crack_tcaptcha.models import FgElem
-from crack_tcaptcha.slider.solver import SliderSolver
+from crack_tcaptcha.pipelines.slide import SliderSolver
 
 
 def _make_synthetic_pair(

@@ -2,38 +2,35 @@
 
 Public API::
 
-    from crack_tcaptcha import solve, TCaptchaType
+    from crack_tcaptcha import solve
 
-    result = solve(appid="...", challenge_type=TCaptchaType.SLIDER)
+    result = solve(appid="...")
     if result.ok:
         print(result.ticket, result.randstr)
 """
 
 from __future__ import annotations
 
-from crack_tcaptcha.models import SolveResult, TCaptchaType
-from crack_tcaptcha.tdc.nodejs_jsdom import NodeJsdomProvider
+from crack_tcaptcha.models import SolveResult
 
-__all__ = ["solve", "TCaptchaType", "SolveResult"]
+__all__ = ["solve", "SolveResult"]
 
 
-def solve(
-    appid: str,
-    *,
-    challenge_type: TCaptchaType = TCaptchaType.SLIDER,
-    max_retries: int = 3,
-) -> SolveResult:
-    """Unified entry point — dispatches to the correct pipeline."""
-    tdc = NodeJsdomProvider()
+def _build_tdc_provider():
+    """Build the TDC provider. Always Node.js + jsdom (the only supported path)."""
+    from crack_tcaptcha.tdc.nodejs_jsdom import NodeJsdomProvider
 
-    if challenge_type == TCaptchaType.SLIDER:
-        from crack_tcaptcha.slider.pipeline import solve_slider
+    return NodeJsdomProvider()
 
-        return solve_slider(appid, tdc_provider=tdc, max_retries=max_retries)
 
-    if challenge_type == TCaptchaType.ICON_CLICK:
-        from crack_tcaptcha.icon_click.pipeline import solve_icon_click
+def solve(appid: str, *, max_retries: int | None = None, entry_url: str = "") -> SolveResult:
+    """Auto-classify the captcha and route to the matching pipeline."""
+    from crack_tcaptcha.pipelines import dispatch
 
-        return solve_icon_click(appid, tdc_provider=tdc, max_retries=max_retries)
-
-    return SolveResult(ok=False, error=f"Unknown challenge type: {challenge_type}")
+    tdc = _build_tdc_provider()
+    return dispatch(
+        appid,
+        tdc_provider=tdc,
+        max_retries=max_retries,
+        entry_url=entry_url,
+    )

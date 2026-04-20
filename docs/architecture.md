@@ -1,50 +1,103 @@
-# Architecture
+# 架构总览
 
-## Three-Phase Protocol
+## 分层架构
 
-All endpoints live under `https://turing.captcha.qcloud.com`.
+```
+┌───────────────────────────────────────────────────────────────┐
+│  solve(appid, ...)                  ← crack_tcaptcha/__init__ │
+└──────────────┬────────────────────────────────────────────────┘
+               │  classify(dyn)  →  captcha_type
+               ▼
+┌───────────────────────────────────────────────────────────────┐
+│  pipelines/                                                    │
+│    ├─ slide.py         ── OpenCV NCC                           │
+│    ├─ icon_click.py    ── ddddocr                              │
+│    ├─ word_click.py    ── ddddocr + llm_vision                 │
+│    ├─ image_select.py  ── llm_vision                           │
+│    └─ _common.py       ── finish_with_verify / run_async       │
+└──────────────┬────────────────────────────────────────────────┘
+               │ uses                                   uses
+               ▼                                        ▼
+   ┌──────────────────────┐             ┌──────────────────────┐
+   │ solvers/             │             │ tdc/                 │
+   │   └─ llm_vision.py   │             │   ├─ provider.py     │
+   │      (OpenAI 兼容)    │             │   └─ nodejs_jsdom.py │
+   └──────────────────────┘             └──────────────────────┘
+               │                                        │
+               └──────────┬─────────────────────────────┘
+                          ▼
+      ┌──────────────────────────────────────────┐
+      │ client.py (HTTP 三段式 + JSONP 解壳)       │
+      │ pow.py   (MD5 PoW)                        │
+      │ trajectory.py (滑动/点击轨迹生成)          │
+      │ models.py (pydantic 响应模型)              │
+      │ settings.py (pydantic-settings)           │
+      └──────────────────────────────────────────┘
+```
+
+依赖方向严格自上而下：`pipelines` 依赖 `solvers`、`tdc`、`client`；`solvers` 和 `tdc` 互不依赖。
+
+## 三段式协议
+
+所有端点都在 `https://turing.captcha.qcloud.com`（可通过 `TCAPTCHA_BASE_URL` 覆盖）。
 
 ```
 ┌──────────┐   prehandle    ┌──────────┐   getcapbysig   ┌──────────┐
 │  Client   │──────────────▶│  Server   │◀───────────────│  Client   │
 │           │◀──────────────│           │───────────────▶│           │
-│           │  sess, pow,   │           │  bg/fg PNGs    │           │
-│           │  fg_elem_list │           │                │           │
+│           │ sess, pow_cfg │           │  bg / fg PNG   │           │
+│           │ fg_elem_list  │           │                │           │
 │           │               │           │                │           │
-│           │   verify      │           │                │           │
+│           │    verify     │           │                │           │
 │           │──────────────▶│           │                │           │
 │           │◀──────────────│           │                │           │
 │           │ ticket/randstr│           │                │           │
 └──────────┘               └──────────┘                └──────────┘
 ```
 
-### Phase 1: `cap_union_prehandle`
-- Initializes session, returns `sess`, `pow_cfg`, `fg_elem_list`, `bg_elem_cfg`.
-- `subsid` increments on each retry attempt.
+### 阶段 1：`cap_union_prehandle`
 
-### Phase 2: `cap_union_new_getcapbysig`
-- `img_index=1` → background (672×390 RGB PNG)
-- `img_index=0` → foreground sprite (682×620 RGBA PNG)
+- 初始化会话，返回 `sess`、`pow_cfg`、`dyn_show_info`、`bg_elem_cfg`、可选的 `fg_elem_list`
+- 每次重试 `subsid` 会自增
+- 返回体是 JSONP，`client.py` 中 `parse_jsonp` 剥壳
 
-### Phase 3: `cap_union_new_verify`
-- POST with `ans`, `pow_answer`, `pow_calc_time`, `collect`, `tlg`, `eks`.
-- Returns `ticket` + `randstr` on success.
+### 阶段 2：`cap_union_new_getcapbysig`
 
-## NCC Template Matching
+- `img_index=1` → 背景图
+- `img_index=0` → 前景精灵图（slider 的拼图块；icon_click 的提示图标）
+- 滑块：背景 672×390 RGB PNG，前景 682×620 RGBA PNG
+- 文字点选 / 图像选择：只需要背景图（提示词内嵌在 `instruction`）
 
-Two-phase search:
-1. **Coarse**: stride=4 along `init_y` row → ~168 evaluations
-2. **Fine**: ±6px X × ±5px Y → ~143 evaluations
+### 阶段 3：`cap_union_new_verify`
 
-Total ~311 vs full-image 262,080 → **842× speedup**.
+POST 字段：`ans`、`pow_answer`、`pow_calc_time`、`collect`、`tlg`、`eks`。成功返回 `ticket` + `randstr`。
 
-## TDC.js Bridge
+## Pipeline ↔ Solver 映射
+
+| Pipeline | 核心 Solver | 可选/回退 | 依赖包 |
+|---|---|---|---|
+| `slide` | `solvers`（内嵌 NCC，见 `pipelines/slide.py` 的 `SliderSolver`） | —— | `numpy`、`Pillow` |
+| `icon_click` | `ddddocr` 检测 + 模板匹配 | —— | `ddddocr`（extra `icon-click`） |
+| `word_click` | `solvers/llm_vision.locate_chars` | `ddddocr` 按 bbox 分类 + 子串匹配 | `ddddocr` + OpenAI 兼容 API |
+| `image_select` | `solvers/llm_vision.match_region` | —— | OpenAI 兼容 API |
+
+自动路由：`captcha_type.classify(dyn_show_info)` 是一个纯函数分类器，按规则顺序返回 `slide` / `icon_click` / `word_click` / `image_select` / `unknown`。规则命中后 `pipelines.dispatch` 将请求分发到对应的 pipeline。
+
+## TDC.js 桥接
 
 ```
 Python ──subprocess──▶ Node.js + jsdom ──eval──▶ tdc.js
                               │
                               ▼
-                    {collect, eks, tlg}
+                {collect, eks, tokenid, pow_answer}
 ```
 
-Provider protocol allows swapping to Puppeteer if jsdom is detected.
+`tdc/provider.py` 定义了 `TDCProvider` Protocol：任何实现 `async collect(tdc_url, trajectory, ua) -> TDCResult` 的对象都可以被 pipeline 使用。当前仅实现 `NodeJsdomProvider`（`tdc/nodejs_jsdom.py`），未来可以扩展到 Puppeteer 或其他浏览器桥接方案而不需要改动 pipeline 代码。
+
+关键 jsdom 配置在 `tdc/js/tdc_executor.js`：`pretendToBeVisual: true`、`runScripts: "dangerously"`，并 patch `screen`、`innerWidth/Height`、`devicePixelRatio`、`navigator.webdriver`。详细检测向量见 [反向笔记](reverse-notes.md)。
+
+## HTTP 层设计
+
+`client.py` 使用 `scrapling` 的 `Fetcher`（底层 `curl_cffi`）做 Chrome TLS 指纹模拟，绕过腾讯基于 TLS 指纹的 bot 检测。普通的 `httpx` / `requests` / `urllib` 在该端点会直接收到 403。
+
+`entry_url` 参数可选，用于为请求附加合理的 `Referer` / `Origin`。在真实业务站点嵌入时建议传入，空值也能跑通但风控更严格。

@@ -1,0 +1,40 @@
+name: "Setup Python Environment"
+description: "Set up Python + uv and sync project dependencies"
+
+inputs:
+  python-version:
+    description: "Python version to use"
+    required: true
+    default: "3.12"
+  uv-version:
+    description: "uv version to use"
+    required: true
+    default: "0.5.11"
+  extras:
+    description: "Comma-separated extras to install (e.g. 'dev,icon-click')"
+    required: false
+    default: "dev"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        version: ${{ inputs.uv-version }}
+        enable-cache: 'true'
+        cache-suffix: ${{ inputs.python-version }}
+
+    - name: Install Python dependencies
+      shell: bash
+      run: |
+        EXTRA_FLAGS=""
+        IFS=',' read -ra EXTRAS <<< "${{ inputs.extras }}"
+        for e in "${EXTRAS[@]}"; do
+          [ -n "$e" ] && EXTRA_FLAGS="$EXTRA_FLAGS --extra $e"
+        done
+        uv sync --frozen $EXTRA_FLAGS
