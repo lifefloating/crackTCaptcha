@@ -355,6 +355,12 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "cn-clip" },
+    { name = "cn2an" },
+    { name = "ddddocr" },
+    { name = "torch" },
+]
 clip = [
     { name = "cn-clip" },
     { name = "cn2an" },
@@ -377,8 +383,11 @@ icon-click = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cn-clip", marker = "extra == 'all'", specifier = ">=1.0" },
     { name = "cn-clip", marker = "extra == 'clip'", specifier = ">=1.0" },
+    { name = "cn2an", marker = "extra == 'all'", specifier = ">=0.5" },
     { name = "cn2an", marker = "extra == 'clip'", specifier = ">=0.5" },
+    { name = "ddddocr", marker = "extra == 'all'", specifier = ">=1.4" },
     { name = "ddddocr", marker = "extra == 'icon-click'", specifier = ">=1.4" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
@@ -393,9 +402,10 @@ requires-dist = [
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
     { name = "scrapling", extras = ["fetchers"], specifier = ">=0.4.3" },
+    { name = "torch", marker = "extra == 'all'", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'clip'", specifier = ">=2.0" },
 ]
-provides-extras = ["icon-click", "clip", "dev", "docs"]
+provides-extras = ["icon-click", "clip", "all", "dev", "docs"]
 
 [[package]]
 name = "cssselect"

@@ -19,11 +19,22 @@ _det: ddddocr.DdddOcr | None = None
 _ocr: ddddocr.DdddOcr | None = None
 
 
+def _import_ddddocr():
+    try:
+        import ddddocr
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(
+            "ddddocr is required for word_click / icon_click pipelines. "
+            "Install it via:  pip install 'crack-tcaptcha[icon-click]'  "
+            "or  pip install 'crack-tcaptcha[all]'"
+        ) from e
+    return ddddocr
+
+
 def _get_det() -> ddddocr.DdddOcr:
     global _det
     if _det is None:
-        import ddddocr
-
+        ddddocr = _import_ddddocr()
         _det = ddddocr.DdddOcr(det=True, show_ad=False)
     return _det
 
@@ -31,8 +42,7 @@ def _get_det() -> ddddocr.DdddOcr:
 def _get_ocr() -> ddddocr.DdddOcr:
     global _ocr
     if _ocr is None:
-        import ddddocr
-
+        ddddocr = _import_ddddocr()
         _ocr = ddddocr.DdddOcr(show_ad=False)
     return _ocr
 
