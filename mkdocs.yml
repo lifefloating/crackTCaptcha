@@ -1,13 +1,19 @@
-site_name: crack-tcaptcha
-site_description: Automated TCaptcha solver library
+site_name: crack-tcaptcha 文档
+site_description: 腾讯 TCaptcha 自动化求解器文档
 theme:
   name: material
+  language: zh
   palette:
     scheme: slate
     primary: teal
 nav:
-  - Home: index.md
-  - Architecture: architecture.md
-  - Slider: slider.md
-  - Icon Click: icon-click.md
-  - Reverse Notes: reverse-notes.md
+  - 入门:
+    - 概览: index.md
+    - 架构: architecture.md
+  - 验证码类型:
+    - 滑块 (slider): slider.md
+    - 图标点击 (icon_click): icon-click.md
+    - 文字点选 (word_click): word-click.md
+    - 图像选择 (image_select): image-select.md
+  - 深入:
+    - 反向工程笔记: reverse-notes.md
