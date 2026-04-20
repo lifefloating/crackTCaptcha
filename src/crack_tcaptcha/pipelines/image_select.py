@@ -45,7 +45,9 @@ def solve_one_attempt(
         [{"elem_id": "", "type": "DynAnswerType_UC", "data": str(region_id)}]
     )
 
-    pow_answer, pow_calc_time = solve_pow(pre.pow_cfg.prefix, pre.pow_cfg.target_md5)
+    pow_answer, pow_calc_time = solve_pow(
+        pre.pow_cfg.prefix, pre.pow_cfg.target_md5, min_ms=300, max_ms=500,
+    )
 
     selected = next(r for r in pre.select_regions if r.id == region_id)
     x1, y1, x2, y2 = selected.range

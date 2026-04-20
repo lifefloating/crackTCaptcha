@@ -123,7 +123,9 @@ def solve_one_attempt(
     target_x, target_y, ncc = solver.solve(bg_bytes, fg_bytes, piece)
     log.info("slide NCC: target=(%d,%d) ncc=%.4f", target_x, target_y, ncc)
 
-    pow_answer, pow_calc_time = solve_pow(pre.pow_cfg.prefix, pre.pow_cfg.target_md5)
+    pow_answer, pow_calc_time = solve_pow(
+        pre.pow_cfg.prefix, pre.pow_cfg.target_md5, min_ms=300, max_ms=500,
+    )
 
     ans = json.dumps(
         [

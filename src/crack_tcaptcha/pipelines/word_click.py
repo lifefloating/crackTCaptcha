@@ -166,7 +166,9 @@ def solve_one_attempt(
             log.warning("word_click: char %r unresolved, using bbox 1", ch)
     log.info("word_click click_coords=%s for targets=%s", click_coords, targets)
 
-    pow_answer, pow_calc_time = solve_pow(pre.pow_cfg.prefix, pre.pow_cfg.target_md5)
+    pow_answer, pow_calc_time = solve_pow(
+        pre.pow_cfg.prefix, pre.pow_cfg.target_md5, min_ms=300, max_ms=500,
+    )
 
     ans_list = [
         {

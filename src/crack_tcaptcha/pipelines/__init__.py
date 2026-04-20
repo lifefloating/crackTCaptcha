@@ -37,7 +37,9 @@ def dispatch(
     retries = max_retries if max_retries is not None else settings.max_retries
     own_client = client is None
     if own_client:
-        client = TCaptchaClient()
+        # Pass entry_url at construction so verify() can use matching
+        # Referer/Origin headers. Real Chrome 2.0 backend cross-checks these.
+        client = TCaptchaClient(entry_url=entry_url)
 
     last_error = ""
     try:

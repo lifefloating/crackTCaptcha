@@ -58,7 +58,9 @@ def solve_one_attempt(
             f"icon_click expected {len(pre.fg_elem_list)} matches, got {len(click_coords)}"
         )
 
-    pow_answer, pow_calc_time = solve_pow(pre.pow_cfg.prefix, pre.pow_cfg.target_md5)
+    pow_answer, pow_calc_time = solve_pow(
+        pre.pow_cfg.prefix, pre.pow_cfg.target_md5, min_ms=300, max_ms=500,
+    )
 
     # Answer format aligned with tx-word reference: elem_id is a 1-based
     # sequence index (not the elem_id from prehandle), type is POS, data

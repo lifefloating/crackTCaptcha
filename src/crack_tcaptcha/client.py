@@ -44,6 +44,16 @@ def parse_jsonp(raw: str) -> dict[str, Any]:
     return json.loads(body)
 
 
+def _origin_of(url: str) -> str:
+    """Return ``scheme://host[:port]`` for a URL. Empty string if empty."""
+    if not url:
+        return ""
+    parsed = urllib.parse.urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 # ---------------------------------------------------------------------------
 # Client class
 # ---------------------------------------------------------------------------
@@ -61,12 +71,17 @@ class TCaptchaClient:
         user_agent: str | None = None,
         proxy: str | None = None,
         timeout: float | None = None,
+        entry_url: str = "",
     ) -> None:
         ua = user_agent or settings.user_agent
         self._ua = ua
         self._ua_b64 = base64.b64encode(ua.encode()).decode()
         self._timeout = timeout or settings.timeout
         self._proxy = proxy or settings.proxy or None
+        # Business page URL that hosts the captcha. Used for Referer/Origin
+        # headers in prehandle/verify. 2.0 (TJCaptcha.js) backend cross-checks
+        # these against the captcha registration; wrong values → errorCode=12.
+        self._entry_url = entry_url
 
         # Common kwargs forwarded to every Fetcher request
         self._fetch_kw: dict[str, Any] = {
@@ -93,6 +108,13 @@ class TCaptchaClient:
     def prehandle(self, aid: str, *, subsid: int = 1, entry_url: str = "") -> PrehandleResp:
         import random
 
+        # Caller may pass per-call entry_url; otherwise use the one bound at
+        # construction. Keeping the instance attr lets downstream calls
+        # (verify) reuse the same business origin.
+        effective_entry = entry_url or self._entry_url
+        if entry_url and not self._entry_url:
+            self._entry_url = entry_url
+
         callback = f"_aq_{random.randint(100000, 999999)}"
         # Parameters aligned with real Chrome TJCaptcha.js (2.0) traffic for
         # turing.captcha.qcloud.com. Captured via CDP 2026-04-20 for aid=191743853.
@@ -112,7 +134,7 @@ class TCaptchaClient:
             "cap_cd": "",
             "uid": "",
             "lang": "zh-cn",
-            "entry_url": entry_url,
+            "entry_url": effective_entry,
             "elder_captcha": "0",
             "js": "/tgJCap.627c7f42.js",
             "login_appid": "",
@@ -124,7 +146,7 @@ class TCaptchaClient:
         url = f"{settings.base_url}/cap_union_prehandle"
         # Real Chrome sends Referer = entry_url's origin + '/'. Fall back to
         # entry_url itself (or base_url) when no entry_url given.
-        referer = entry_url or settings.base_url
+        referer = effective_entry or settings.base_url
         fetch_kw = {**self._fetch_kw, "headers": {**self._fetch_kw["headers"], "Referer": referer}}
         try:
             resp = Fetcher.get(url, params=params, **fetch_kw)
@@ -273,11 +295,29 @@ class TCaptchaClient:
             "eks": eks,
         }
         url = f"{settings.base_url}/cap_union_new_verify"
+        # Real Chrome (CDP capture 2026-04-20 aid=196026326 success) sends:
+        #   Referer: <entry_url>          (full business page URL)
+        #   Origin:  <entry_url_origin>   (scheme://host[:port])
+        # scrapling defaults to stealth Referer=https://www.google.com/ which
+        # the 2.0 backend rejects with errorCode=12.
+        verify_headers: dict[str, str] = {**self._fetch_kw["headers"]}
+        origin = _origin_of(self._entry_url)
+        if self._entry_url:
+            verify_headers["Referer"] = self._entry_url
+        if origin:
+            verify_headers["Origin"] = origin
+        # Match Chrome's XHR Accept header
+        verify_headers.setdefault("Accept", "application/json, text/javascript, */*; q=0.01")
+        fetch_kw = {**self._fetch_kw, "headers": verify_headers}
         log = logging.getLogger(__name__)
-        log.info("verify POST: sess=%s... ans=%s pow_answer=%s pow_calc_time=%s collect_len=%d tlg=%s eks_len=%d",
-                 sess[:40], ans, pow_answer[:30], str(pow_calc_time), len(collect), str(tlg), len(eks))
+        log.info(
+            "verify POST: sess=%s... ans=%s pow_answer=%s pow_calc_time=%s collect_len=%d tlg=%s eks_len=%d referer=%s origin=%s",
+            sess[:40], ans, pow_answer[:30], str(pow_calc_time),
+            len(collect), str(tlg), len(eks),
+            verify_headers.get("Referer", ""), verify_headers.get("Origin", ""),
+        )
         try:
-            resp = Fetcher.post(url, data=body, **self._fetch_kw)
+            resp = Fetcher.post(url, data=body, **fetch_kw)
             if resp.status != 200:
                 raise NetworkError(f"verify failed: HTTP {resp.status}")
         except NetworkError:
