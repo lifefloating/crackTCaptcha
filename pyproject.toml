@@ -48,7 +48,7 @@ build-backend = "hatchling.build"
 packages = ["src/crack_tcaptcha"]
 
 [tool.ruff]
-line-length = 120
+line-length = 130
 target-version = "py310"
 src = ["src", "tests"]
 

@@ -74,9 +74,7 @@ def stub_pow(monkeypatch):
 
 @pytest.fixture()
 def stub_tdc_url(monkeypatch):
-    monkeypatch.setattr(
-        "crack_tcaptcha.pipelines._common.resolve_tdc_url", lambda p: p
-    )
+    monkeypatch.setattr("crack_tcaptcha.pipelines._common.resolve_tdc_url", lambda p: p)
 
 
 class TestImageSelectSolve:
@@ -90,9 +88,7 @@ class TestImageSelectSolve:
         with pytest.raises(SolveError, match="no instruction"):
             solve_one_attempt(_make_client(), pre, _make_tdc())
 
-    def test_success_builds_uc_answer_and_clicks_region_center(
-        self, monkeypatch, stub_pow, stub_tdc_url
-    ):
+    def test_success_builds_uc_answer_and_clicks_region_center(self, monkeypatch, stub_pow, stub_tdc_url):
         pre = _make_pre()
         client = _make_client()
         tdc = _make_tdc()
@@ -112,9 +108,7 @@ class TestImageSelectSolve:
         assert kwargs["pow_answer"] == "p_9"
         assert kwargs["pow_calc_time"] == 4
 
-    def test_raises_when_match_returns_unknown_id(
-        self, monkeypatch, stub_pow, stub_tdc_url
-    ):
+    def test_raises_when_match_returns_unknown_id(self, monkeypatch, stub_pow, stub_tdc_url):
         """If LLM returns id not in regions, StopIteration from `next(...)`
         should surface as an error — we assert an exception, not success."""
         pre = _make_pre()

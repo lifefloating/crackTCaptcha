@@ -52,9 +52,11 @@ def _fallback_match_by_ocr(
     already_assigned: dict[str, int],
 ) -> dict[str, int]:
     """Per-bbox ddddocr classify + substring match for chars LLM missed."""
-    from crack_tcaptcha._legacy.icon_match import _get_ocr
     import io
+
     from PIL import Image
+
+    from crack_tcaptcha._legacy.icon_match import _get_ocr
 
     missing = [ch for ch in targets if already_assigned.get(ch, 0) <= 0]
     if not missing:
@@ -118,21 +120,22 @@ def solve_one_attempt(
     bg_bytes = client.get_image(pre.bg_elem_cfg.img_url)
     log.info(
         "word_click: instruction=%r targets=%s bg=%d bytes",
-        pre.instruction, targets, len(bg_bytes),
+        pre.instruction,
+        targets,
+        len(bg_bytes),
     )
 
     try:
         from crack_tcaptcha._legacy.icon_match import detect_icons
     except ImportError as e:
-        raise SolveError(
-            "word_click requires ddddocr: `uv sync --extra icon-click`"
-        ) from e
+        raise SolveError("word_click requires ddddocr: `uv sync --extra icon-click`") from e
 
     bboxes = detect_icons(bg_bytes)
     if len(bboxes) < len(targets):
         log.warning(
             "word_click: only %d bboxes detected for %d targets",
-            len(bboxes), len(targets),
+            len(bboxes),
+            len(targets),
         )
     if not bboxes:
         raise SolveError("word_click: detector returned 0 bboxes")
@@ -167,7 +170,10 @@ def solve_one_attempt(
     log.info("word_click click_coords=%s for targets=%s", click_coords, targets)
 
     pow_answer, pow_calc_time = solve_pow(
-        pre.pow_cfg.prefix, pre.pow_cfg.target_md5, min_ms=300, max_ms=500,
+        pre.pow_cfg.prefix,
+        pre.pow_cfg.target_md5,
+        min_ms=300,
+        max_ms=500,
     )
 
     ans_list = [
@@ -189,7 +195,9 @@ def solve_one_attempt(
     combined = combined.model_copy(update={"kind": "click"})
 
     return finish_with_verify(
-        client, pre, tdc_provider,
+        client,
+        pre,
+        tdc_provider,
         ans_json=ans,
         pow_answer=pow_answer,
         pow_calc_time=pow_calc_time,

@@ -39,11 +39,7 @@ def solve_pow(
         if hashlib.md5(candidate.encode()).hexdigest() == target_md5:
             calc_ms = int((time.perf_counter() - t0) * 1000)
             if min_ms > 0:
-                target = (
-                    random.randint(min_ms, max_ms)
-                    if max_ms > min_ms
-                    else min_ms
-                )
+                target = random.randint(min_ms, max_ms) if max_ms > min_ms else min_ms
                 if calc_ms < target:
                     time.sleep((target - calc_ms) / 1000.0)
                     calc_ms = target

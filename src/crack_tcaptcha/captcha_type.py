@@ -6,8 +6,9 @@ matches returns Classification(captcha_type="unknown", matched_rule="fallback_un
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 CAPTCHA_TYPES = ("slide", "icon_click", "word_click", "image_select", "unknown")
 

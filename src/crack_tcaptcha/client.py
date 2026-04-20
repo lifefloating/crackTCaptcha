@@ -167,7 +167,9 @@ class TCaptchaClient:
         log = logging.getLogger(__name__)
         log.info(
             "prehandle dyn_show_info keys=%s instruction=%r show_type=%s data_type=%s regions=%d fg_elems=%d",
-            list(dyn.keys()), dyn.get("instruction", ""), dyn.get("show_type", ""),
+            list(dyn.keys()),
+            dyn.get("instruction", ""),
+            dyn.get("show_type", ""),
             dyn.get("bg_elem_cfg", {}).get("click_cfg", {}).get("data_type", []),
             len(dyn.get("json_payload", {}).get("select_region_list", []))
             if isinstance(dyn.get("json_payload"), dict)
@@ -251,7 +253,9 @@ class TCaptchaClient:
             log = logging.getLogger(__name__)
             log.info(
                 "image download: %s → HTTP %d, %d bytes",
-                full[:100], resp.status, len(resp.body),
+                full[:100],
+                resp.status,
+                len(resp.body),
             )
             if resp.status != 200:
                 raise NetworkError(f"image download failed: HTTP {resp.status}")
@@ -312,9 +316,15 @@ class TCaptchaClient:
         log = logging.getLogger(__name__)
         log.info(
             "verify POST: sess=%s... ans=%s pow_answer=%s pow_calc_time=%s collect_len=%d tlg=%s eks_len=%d referer=%s origin=%s",
-            sess[:40], ans, pow_answer[:30], str(pow_calc_time),
-            len(collect), str(tlg), len(eks),
-            verify_headers.get("Referer", ""), verify_headers.get("Origin", ""),
+            sess[:40],
+            ans,
+            pow_answer[:30],
+            str(pow_calc_time),
+            len(collect),
+            str(tlg),
+            len(eks),
+            verify_headers.get("Referer", ""),
+            verify_headers.get("Origin", ""),
         )
         try:
             resp = Fetcher.post(url, data=body, **fetch_kw)

@@ -138,9 +138,7 @@ def _annotate_bg(bg_bytes: bytes, bboxes: list[tuple[int, int, int, int]]) -> by
     return buf.getvalue()
 
 
-def _build_word_click_prompt(
-    targets: list[str], bboxes: list[tuple[int, int, int, int]]
-) -> str:
+def _build_word_click_prompt(targets: list[str], bboxes: list[tuple[int, int, int, int]]) -> str:
     lines = [
         "The image shows several Chinese characters, each highlighted with a red box labeled 1, 2, 3, ...",
         f"There are {len(bboxes)} labeled boxes on the image.",

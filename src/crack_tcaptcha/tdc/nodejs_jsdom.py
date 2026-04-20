@@ -47,9 +47,7 @@ class NodeJsdomProvider:
                 cwd=str(self._js_dir),
             )
         except FileNotFoundError as e:
-            raise TDCError(
-                f"node not found: install Node.js and run `npm install` in {self._js_dir}"
-            ) from e
+            raise TDCError(f"node not found: install Node.js and run `npm install` in {self._js_dir}") from e
 
         try:
             stdout, stderr = await asyncio.wait_for(
@@ -74,9 +72,7 @@ class NodeJsdomProvider:
             data = json.loads(stdout_text)
         except json.JSONDecodeError as e:
             last = stdout_text.strip().splitlines()[-1] if stdout_text.strip() else ""
-            raise TDCError(
-                f"tdc_executor.js returned invalid JSON ({e}); last stdout line: {last[:300]}"
-            ) from e
+            raise TDCError(f"tdc_executor.js returned invalid JSON ({e}); last stdout line: {last[:300]}") from e
 
         collect = data.get("collect", "") or ""
         eks = data.get("eks", "") or ""
@@ -86,7 +82,10 @@ class NodeJsdomProvider:
 
         log.info(
             "NodeJsdomProvider: kind=%s collect_len=%d eks_len=%d tokenid=%s",
-            trajectory.kind, len(collect), len(eks), str(tokenid)[:20],
+            trajectory.kind,
+            len(collect),
+            len(eks),
+            str(tokenid)[:20],
         )
 
         return TDCResult(

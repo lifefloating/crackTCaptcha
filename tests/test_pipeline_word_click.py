@@ -25,7 +25,6 @@ from crack_tcaptcha.pipelines.word_click import (
     solve_one_attempt,
 )
 
-
 # ---------------------------------------------------------------------------
 # Pure helpers
 # ---------------------------------------------------------------------------
@@ -206,9 +205,7 @@ class TestSolveOneAttempt:
             lambda _bg, targets, bboxes: {"甲": 1, "乙": 2},
         )
         # finish_with_verify's TDC collect goes through; just rubber-stamp
-        monkeypatch.setattr(
-            "crack_tcaptcha.pipelines._common.resolve_tdc_url", lambda p: p
-        )
+        monkeypatch.setattr("crack_tcaptcha.pipelines._common.resolve_tdc_url", lambda p: p)
 
         resp = solve_one_attempt(client, pre, tdc)
         assert resp.ok
@@ -238,9 +235,7 @@ class TestSolveOneAttempt:
         ocr = MagicMock()
         ocr.classification.return_value = "甲"
         monkeypatch.setattr("crack_tcaptcha._legacy.icon_match._get_ocr", lambda: ocr)
-        monkeypatch.setattr(
-            "crack_tcaptcha.pipelines._common.resolve_tdc_url", lambda p: p
-        )
+        monkeypatch.setattr("crack_tcaptcha.pipelines._common.resolve_tdc_url", lambda p: p)
 
         resp = solve_one_attempt(client, pre, tdc)
         assert resp.ok

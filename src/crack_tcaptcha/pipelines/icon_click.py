@@ -48,18 +48,17 @@ def solve_one_attempt(
     try:
         from crack_tcaptcha._legacy.icon_match import match_icons
     except ImportError as e:
-        raise SolveError(
-            "icon_click requires ddddocr: `uv sync --extra icon-click`"
-        ) from e
+        raise SolveError("icon_click requires ddddocr: `uv sync --extra icon-click`") from e
 
     click_coords = match_icons(bg_bytes, hint_images)
     if len(click_coords) != len(pre.fg_elem_list):
-        raise SolveError(
-            f"icon_click expected {len(pre.fg_elem_list)} matches, got {len(click_coords)}"
-        )
+        raise SolveError(f"icon_click expected {len(pre.fg_elem_list)} matches, got {len(click_coords)}")
 
     pow_answer, pow_calc_time = solve_pow(
-        pre.pow_cfg.prefix, pre.pow_cfg.target_md5, min_ms=300, max_ms=500,
+        pre.pow_cfg.prefix,
+        pre.pow_cfg.target_md5,
+        min_ms=300,
+        max_ms=500,
     )
 
     # Answer format aligned with tx-word reference: elem_id is a 1-based
@@ -84,7 +83,9 @@ def solve_one_attempt(
     combined = combined.model_copy(update={"kind": "click"})
 
     return finish_with_verify(
-        client, pre, tdc_provider,
+        client,
+        pre,
+        tdc_provider,
         ans_json=ans,
         pow_answer=pow_answer,
         pow_calc_time=pow_calc_time,

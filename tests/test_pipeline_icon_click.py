@@ -78,9 +78,7 @@ def stub_pow(monkeypatch):
 
 @pytest.fixture()
 def stub_tdc_url(monkeypatch):
-    monkeypatch.setattr(
-        "crack_tcaptcha.pipelines._common.resolve_tdc_url", lambda p: p
-    )
+    monkeypatch.setattr("crack_tcaptcha.pipelines._common.resolve_tdc_url", lambda p: p)
 
 
 class TestIconClickSolve:
@@ -101,11 +99,7 @@ class TestIconClickSolve:
         real_import = builtins.__import__
 
         def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-            if (
-                name == "crack_tcaptcha._legacy.icon_match"
-                and fromlist
-                and "match_icons" in fromlist
-            ):
+            if name == "crack_tcaptcha._legacy.icon_match" and fromlist and "match_icons" in fromlist:
                 raise ImportError("no ddddocr")
             return real_import(name, globals, locals, fromlist, level)
 
@@ -126,9 +120,7 @@ class TestIconClickSolve:
         with pytest.raises(SolveError, match="expected 2 matches, got 1"):
             solve_one_attempt(client, pre, tdc)
 
-    def test_success_builds_expected_ans_and_verify_kwargs(
-        self, monkeypatch, stub_pow, stub_tdc_url
-    ):
+    def test_success_builds_expected_ans_and_verify_kwargs(self, monkeypatch, stub_pow, stub_tdc_url):
         pre = _make_pre(n_elems=2)
         client = _make_client()
         tdc = _make_tdc()

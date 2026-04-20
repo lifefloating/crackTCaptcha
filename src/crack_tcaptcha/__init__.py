@@ -19,6 +19,7 @@ __all__ = ["solve", "SolveResult"]
 def _build_tdc_provider():
     """Build the TDC provider. Always Node.js + jsdom (the only supported path)."""
     from crack_tcaptcha.tdc.nodejs_jsdom import NodeJsdomProvider
+
     return NodeJsdomProvider()
 
 

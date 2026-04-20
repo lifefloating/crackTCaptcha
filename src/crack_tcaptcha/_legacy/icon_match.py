@@ -83,15 +83,18 @@ def match_words(
             text = ""
         # Keep only CJK chars from OCR output; ddddocr sometimes returns stray punctuation.
         text = re.sub(r"[^\u4e00-\u9fff]", "", text)
-        results.append({
-            "bbox": (x1, y1, x2, y2),
-            "center": ((x1 + x2) // 2, (y1 + y2) // 2),
-            "ocr": text,
-        })
+        results.append(
+            {
+                "bbox": (x1, y1, x2, y2),
+                "center": ((x1 + x2) // 2, (y1 + y2) // 2),
+                "ocr": text,
+            }
+        )
 
     log.info(
         "word-click det+ocr: %d bboxes, ocr=%s",
-        len(results), [(r["bbox"], r["ocr"]) for r in results],
+        len(results),
+        [(r["bbox"], r["ocr"]) for r in results],
     )
 
     used: set[int] = set()
@@ -126,7 +129,10 @@ def match_words(
         click_coords.append(results[pick_idx]["center"])
         log.info(
             "word-click: target=%r → bbox=%s ocr=%r center=%s",
-            ch, results[pick_idx]["bbox"], results[pick_idx]["ocr"], results[pick_idx]["center"],
+            ch,
+            results[pick_idx]["bbox"],
+            results[pick_idx]["ocr"],
+            results[pick_idx]["center"],
         )
 
     return click_coords

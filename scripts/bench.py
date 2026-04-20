@@ -14,7 +14,7 @@ def main():
     parser.add_argument("--n", type=int, default=20)
     args = parser.parse_args()
 
-    from crack_tcaptcha import solve, TCaptchaType
+    from crack_tcaptcha import TCaptchaType, solve
 
     challenge = TCaptchaType.SLIDER if args.type == "slider" else TCaptchaType.ICON_CLICK
     ok_count = 0
@@ -32,7 +32,7 @@ def main():
 
     rate = ok_count / args.n * 100
     avg = statistics.mean(times)
-    print(f"\n--- Results ---")
+    print("\n--- Results ---")
     print(f"Pass rate: {ok_count}/{args.n} ({rate:.1f}%)")
     print(f"Avg time:  {avg:.2f}s")
     if len(times) > 1:

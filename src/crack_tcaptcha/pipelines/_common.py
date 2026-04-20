@@ -56,7 +56,8 @@ def finish_with_verify(
     tdc_result = run_async(tdc_provider.collect(tdc_url, trajectory, settings.user_agent))
     log.debug(
         "TDC collect: collect=%d bytes, eks=%s",
-        len(tdc_result.collect), tdc_result.eks[:50],
+        len(tdc_result.collect),
+        tdc_result.eks[:50],
     )
     return client.verify(
         pre.sess,

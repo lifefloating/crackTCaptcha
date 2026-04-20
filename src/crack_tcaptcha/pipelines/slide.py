@@ -98,7 +98,7 @@ class SliderSolver:
         pw: int,
         ph: int,
     ) -> float:
-        patch = bg_f[y:y + ph, x:x + pw]
+        patch = bg_f[y : y + ph, x : x + pw]
         patch_flat = patch[mask]
         patch_centered = patch_flat - patch_flat.mean()
         patch_norm = float(np.sqrt((patch_centered**2).sum())) + 1e-8
@@ -124,7 +124,10 @@ def solve_one_attempt(
     log.info("slide NCC: target=(%d,%d) ncc=%.4f", target_x, target_y, ncc)
 
     pow_answer, pow_calc_time = solve_pow(
-        pre.pow_cfg.prefix, pre.pow_cfg.target_md5, min_ms=300, max_ms=500,
+        pre.pow_cfg.prefix,
+        pre.pow_cfg.target_md5,
+        min_ms=300,
+        max_ms=500,
     )
 
     ans = json.dumps(
@@ -141,7 +144,9 @@ def solve_one_attempt(
     traj = generate_slide_trajectory(init_x, init_y, target_x, target_y)
 
     return finish_with_verify(
-        client, pre, tdc_provider,
+        client,
+        pre,
+        tdc_provider,
         ans_json=ans,
         pow_answer=pow_answer,
         pow_calc_time=pow_calc_time,

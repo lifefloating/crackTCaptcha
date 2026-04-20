@@ -20,7 +20,6 @@ from crack_tcaptcha.pipelines._common import (
     run_async,
 )
 
-
 # ---------------------------------------------------------------------------
 # resolve_tdc_url
 # ---------------------------------------------------------------------------
@@ -98,9 +97,7 @@ class TestFinishWithVerify:
         client.verify.return_value = VerifyResp(ok=True, ticket="t", randstr="r")
 
         tdc_provider = MagicMock()
-        tdc_provider.collect = AsyncMock(
-            return_value=TDCResult(collect="COL_DATA", eks="EKS_DATA", tlg=1500)
-        )
+        tdc_provider.collect = AsyncMock(return_value=TDCResult(collect="COL_DATA", eks="EKS_DATA", tlg=1500))
 
         resp = finish_with_verify(
             client,
@@ -142,9 +139,7 @@ class TestFinishWithVerify:
         client.verify.return_value = VerifyResp(ok=False, error_code=15, error_msg="x")
 
         tdc_provider = MagicMock()
-        tdc_provider.collect = AsyncMock(
-            return_value=TDCResult(collect="c", eks="e", tlg=1)
-        )
+        tdc_provider.collect = AsyncMock(return_value=TDCResult(collect="c", eks="e", tlg=1))
 
         finish_with_verify(
             client,

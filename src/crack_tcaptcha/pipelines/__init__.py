@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from crack_tcaptcha.captcha_type import classify
 from crack_tcaptcha.client import TCaptchaClient
@@ -50,7 +50,9 @@ def dispatch(
                 cls = classify(dyn)
                 log.info(
                     "classified type=%s rule=%s instruction=%r",
-                    cls.captcha_type, cls.matched_rule, dyn.get("instruction", ""),
+                    cls.captcha_type,
+                    cls.matched_rule,
+                    dyn.get("instruction", ""),
                 )
                 if cls.captcha_type == "unknown":
                     raise UnsupportedCaptchaType(cls.captcha_type, sorted(dyn.keys()))

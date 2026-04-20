@@ -31,7 +31,9 @@ def solve_one_attempt(
     bg_bytes = client.get_image(pre.bg_elem_cfg.img_url)
     log.info(
         "image_select: instruction=%r, %d regions, bg=%d bytes",
-        pre.instruction, len(pre.select_regions), len(bg_bytes),
+        pre.instruction,
+        len(pre.select_regions),
+        len(bg_bytes),
     )
 
     region_id = match_region(
@@ -41,12 +43,13 @@ def solve_one_attempt(
         bg_size=(pre.bg_elem_cfg.width, pre.bg_elem_cfg.height),
     )
 
-    ans = json.dumps(
-        [{"elem_id": "", "type": "DynAnswerType_UC", "data": str(region_id)}]
-    )
+    ans = json.dumps([{"elem_id": "", "type": "DynAnswerType_UC", "data": str(region_id)}])
 
     pow_answer, pow_calc_time = solve_pow(
-        pre.pow_cfg.prefix, pre.pow_cfg.target_md5, min_ms=300, max_ms=500,
+        pre.pow_cfg.prefix,
+        pre.pow_cfg.target_md5,
+        min_ms=300,
+        max_ms=500,
     )
 
     selected = next(r for r in pre.select_regions if r.id == region_id)
@@ -56,7 +59,9 @@ def solve_one_attempt(
     log.info("image_select click center=(%d,%d) for region %d", cx, cy, region_id)
 
     return finish_with_verify(
-        client, pre, tdc_provider,
+        client,
+        pre,
+        tdc_provider,
         ans_json=ans,
         pow_answer=pow_answer,
         pow_calc_time=pow_calc_time,
