@@ -27,15 +27,34 @@
 
 ## 安装
 
+### 按需求选择
+
 ```bash
-# 基础（只用滑块 / 图像匹配）
+# 最小安装：仅 slider pipeline（HTTP + 轨迹生成，无 ML 依赖）
 uv add crack-tcaptcha
 
-# 带图标点击识别（引入 ddddocr + onnxruntime）
+# 推荐：图标点击 + 文字点选（word_click 也依赖 ddddocr）
 uv add "crack-tcaptcha[icon-click]"
+
+# 中文图像选择（cn-clip / torch，下载模型约数百 MB）
+uv add "crack-tcaptcha[clip]"
+
+# 全功能一键装（= icon-click + clip）
+uv add "crack-tcaptcha[all]"
 ```
 
-**前置要求**：
+也可以用 `pip` 替代 `uv add`，语法一致：`pip install 'crack-tcaptcha[icon-click]'`。
+
+| Extra | 引入依赖 | 启用的 pipeline |
+|---|---|---|
+| _(none)_ | 仅 httpx / pydantic / numpy / Pillow | `slider` |
+| `icon-click` | `ddddocr`（+ onnxruntime） | `icon_click`、`word_click` |
+| `clip` | `cn2an`、`cn-clip`、`torch` | `image_select`（CLIP backend） |
+| `all` | 以上全部 | 所有 pipeline |
+
+> 运行 `word_click` / `icon_click` 前未装 `[icon-click]` 会得到清晰的 ModuleNotFoundError 提示。
+
+### 前置要求
 
 - Python >= 3.10
 - Node.js >= 18（用于 TDC.js 桥）
