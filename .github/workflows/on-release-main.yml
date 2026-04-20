@@ -1,0 +1,80 @@
+name: release-main
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  set-version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export tag
+        id: vars
+        # Strip leading "v" if present (so v1.2.3 -> 1.2.3)
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          TAG=${TAG#v}
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Update project version in pyproject.toml
+        env:
+          RELEASE_VERSION: ${{ steps.vars.outputs.tag }}
+        run: |
+          sed -i "s/^version = \".*\"/version = \"$RELEASE_VERSION\"/" pyproject.toml
+          grep '^version' pyproject.toml
+
+      - name: Upload updated pyproject.toml
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyproject-toml
+          path: pyproject.toml
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [set-version]
+    # Trusted Publishing via OIDC — no PyPI token needed.
+    permissions:
+      id-token: write
+      contents: read
+    environment:
+      name: pypi
+      url: https://pypi.org/p/crack-tcaptcha
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+
+      - name: Download updated pyproject.toml
+        uses: actions/download-artifact@v4
+        with:
+          name: pyproject-toml
+
+      - name: Build package
+        run: uv build
+
+      - name: Verify dist
+        run: uv run --with twine twine check dist/*
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always
+
+  deploy-docs:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+        with:
+          extras: "dev,docs"
+
+      - name: Deploy MkDocs to gh-pages
+        run: uv run mkdocs gh-deploy --force

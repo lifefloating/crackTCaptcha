@@ -1,0 +1,64 @@
+name: Main
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+      fail-fast: false
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+        with:
+          python-version: ${{ matrix.python-version }}
+          extras: "dev,icon-click"
+
+      - name: Run tests (skip network)
+        run: uv run pytest tests -m "not network"
+
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Check distribution metadata
+        run: |
+          uv run --with twine twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 7
