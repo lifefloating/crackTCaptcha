@@ -1,6 +1,6 @@
 # crack-tcaptcha
 
-> 腾讯 T-Sec 天御验证码（TCaptcha）自动化求解器 —— 支持滑块、图标点击、文字点选、图像选择（image_select）。
+> 腾讯 T-Sec 天御验证码（TCaptcha）自动化求解器 —— 支持滑块、图标点击、文字点选、图像选择。
 > 纯 HTTP 协议实现，**无需 Selenium / Playwright 等浏览器自动化**，依赖 Node.js + jsdom 桥接 TDC.js。
 
 ![verify ok](images/word-click-success.png)
