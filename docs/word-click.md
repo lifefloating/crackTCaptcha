@@ -6,33 +6,71 @@ TCaptcha 2.0 的文字点选挑战。提示词（目标汉字序列）内嵌在 
 
 1. `prehandle` 返回 `instruction`（含目标汉字）、背景图 URL、`pow_cfg`；`fg_elem_list` 为空
 2. 下载背景图（`bg_elem_cfg.size_2d = [672, 480]`）
-3. `ddddocr` 在背景上检测候选汉字 bbox
-4. **主路径：LLM vision** —— 给每个候选 bbox 画红框 + 编号（1..N），和目标汉字一起发给 LLM，要求返回 `{char: box_index}` JSON
-5. **回退路径：ddddocr OCR 分类** —— 对 LLM 没映射上的汉字，逐 bbox 跑 `ddddocr.classification` 做子串匹配
-6. 按提示顺序把每个汉字映射到 bbox 中心坐标
-7. 生成点击轨迹，通过 TDC 桥取 `collect` / `eks`
-8. POST `verify`
+3. **主路径：YOLOv8 检测 + Siamese 匹配（本地 ONNX，纯 CPU 约 200 ms）**
+   1. `word_click_detector.onnx`（YOLOv8）在背景图上定位所有字符 bbox
+   2. 用打包在仓库里的 `font.ttf` 把 `instruction` 里每个目标汉字渲染成 52×52 参考图
+   3. 对每一对 `(bbox 裁剪图, 目标参考图)` 跑 `word_click_matcher.onnx`（Siamese）得相似度
+   4. 对每个目标按指令顺序贪心取当前未使用的最高分 bbox
+4. **回退路径：ddddocr**（仅在 YOLO 检测结果为 0、或未安装 `[word-click]` extra 时走） —— `detection + classification` 子串匹配
+5. 按提示顺序把每个汉字映射到 bbox 中心坐标
+6. 生成点击轨迹，通过 TDC 桥取 `collect` / `eks`
+7. POST `verify`
 
-详见 `src/crack_tcaptcha/pipelines/word_click.py`。
+详见 `src/crack_tcaptcha/pipelines/word_click.py` 与 `src/crack_tcaptcha/solvers/word_ocr.py`。
 
-## LLM 配置
+## 模型与依赖
 
-求解器实现在 `src/crack_tcaptcha/solvers/llm_vision.py`（`locate_chars` 函数），走 OpenAI 兼容的 `/v1/chat/completions` 接口。
+装 `word-click` extra：
 
-需要的环境变量（pydantic-settings 自动读 `.env` 或环境变量）：
+```bash
+uv sync --extra word-click
+# 或
+pip install 'crack-tcaptcha[word-click]'
+```
 
-| 环境变量 | 说明 | 默认值 |
+这会安装：
+
+| 包 | 作用 |
+|---|---|
+| `onnxruntime` | 跑 YOLO + Siamese ONNX |
+| `opencv-python-headless` | 图像预处理（letterbox、裁剪、colorspace） |
+| `ddddocr` | 回退路径（YOLO 检测失败时兜底） |
+
+模型文件已通过 hatch `force-include` 打包进 wheel，开箱即用：
+
+| 文件 | 大小 | 作用 |
 |---|---|---|
-| `TCAPTCHA_LLM_API_KEY` | Bearer token | `""`（未配置时 LLM 路径会跳过） |
-| `TCAPTCHA_LLM_BASE_URL` | 不含 `/v1/...` 的基础 URL | `""` |
-| `TCAPTCHA_LLM_MODEL` | 模型名 | `gpt-5.4` |
-| `TCAPTCHA_LLM_TIMEOUT` | HTTP 超时秒数 | `30` |
+| `solvers/models/word_click_detector.onnx` | 10 MB | YOLOv8 检测器，输出字符 bbox |
+| `solvers/models/word_click_matcher.onnx` | 29 MB | Siamese 相似度网络（输入 52×52×3×2，输出 1 个相似度） |
+| `solvers/models/font.ttf` | 4.6 MB | 目标字渲染字体（颜色 BGR `(56,178,227)` 模拟验证码配色） |
 
-**支持的后端**：任何 OpenAI 兼容的中继服务（官方 OpenAI、Azure OpenAI 代理、自建 vLLM / llama.cpp 的 OpenAI shim 等）。请求体用 `image_url` 传 base64 图片，返回必须是能解析出 JSON 对象的文本。
+## 性能调优
 
-**Prompt 位置**：`_build_word_click_prompt()` 和 `_build_prompt()` 函数在 `solvers/llm_vision.py` 顶部，prompt 硬编码在 Python 中，方便直接修改；调整后不需要改 pipeline。
+ONNX Runtime 执行后端通过环境变量选择，默认 `auto` 优先挑 `CUDA > ROCm > DML > CoreML > CPU`：
 
-如果没有配置 LLM（key / base_url 任一为空），pipeline 会走纯 ddddocr OCR 回退；经验上 ddddocr 对验证码字体识别率明显低于 vision LLM，推荐配置 LLM。
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `TCAPTCHA_ORT_BACKEND` | `auto` | 强制后端：`cpu` / `cuda` / `rocm` / `dml` / `coreml` / `auto` |
+| `TCAPTCHA_ORT_INTRA_OP_THREADS` | `min(4, cpu_count)` | ORT 线程数；Siamese 太小，>4 反而更慢 |
+
+**macOS 提示**：默认会选 CoreML EP，首次推理需要一次性的 graph-compile 开销（几秒），总耗时可能比纯 CPU 还高。重复调用请用常驻服务模式，或 `export TCAPTCHA_ORT_BACKEND=cpu` 固定 CPU。
+
+### 常驻服务模式
+
+一次性 CLI 每次都付 Python 启动 + ONNX 加载的冷启动成本。生产 / 重复调用请用 `serve` 子命令：
+
+```bash
+# 启动（模型在进程启动时只加载一次）
+TCAPTCHA_SERVE_SK=change-me crack-tcaptcha serve --port 9991 --workers 4
+
+# 客户端
+curl -H 'X-SK: change-me' -X POST http://127.0.0.1:9991/solve \
+    -d '{"appid":"YOUR_APPID","retries":3}'
+```
+
+## LLM 不再需要
+
+之前版本主路径走 OpenAI 兼容 `/v1/chat/completions`；本地模型 + ddddocr 兜底足够覆盖所有已知 word_click 样本，LLM 相关环境变量（`TCAPTCHA_LLM_*`）只对 `image_select` 还有意义，可留空。
 
 ## Answer 格式
 
@@ -48,7 +86,9 @@ TCaptcha 2.0 的文字点选挑战。提示词（目标汉字序列）内嵌在 
 
 ## 常见坑
 
-- **LLM 返回非 JSON** —— `solvers/llm_vision.py` 内部会做一次重试；仍失败则抛 `SolveError`，由 pipeline 走 ddddocr 回退
-- **bbox 数量少于目标字数** —— 说明 detection 漏检，记录 warning 后仍会尽力回答，但通过率会下降
 - **提示词里混入标点或空格** —— `_parse_target_chars` 用 `[\u4e00-\u9fff]` 正则只抓 CJK 汉字
-- **最后兜底** —— 如果所有方法都没给某个字找到 box，会把它分配到第一个未被使用的 bbox，至少保证一次可见的点击（而不是 `(0,0)` 的显式错误）
+- **bbox 数量少于目标字数** —— YOLO 漏检，pipeline 会记 warning 后仍尽力回答；验证失败时外层 `max_retries` 会重拉一次 prehandle
+- **YOLO 返回 0 bbox** —— 自动走 ddddocr detect + classification 兜底
+- **CoreML EP 首次慢** —— 见上节；`serve` 模式或 `TCAPTCHA_ORT_BACKEND=cpu` 解决
+- **模型文件被安全软件误删** —— 重装 `[word-click]` extra 即可；模型在 wheel 里
+- **最后兜底** —— 如果所有方法都没给某个字找到 bbox（极少见），会把它分配到第一个未被使用的 bbox，至少保证一次可见的点击（而不是 `(0,0)` 的显式错误）

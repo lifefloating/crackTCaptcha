@@ -5,6 +5,7 @@
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │  solve(appid, ...)                  ← crack_tcaptcha/__init__ │
+│  crack-tcaptcha serve               ← crack_tcaptcha/server.py │
 └──────────────┬────────────────────────────────────────────────┘
                │  classify(dyn)  →  captcha_type
                ▼
@@ -12,17 +13,25 @@
 │  pipelines/                                                    │
 │    ├─ slide.py         ── OpenCV NCC                           │
 │    ├─ icon_click.py    ── ddddocr                              │
-│    ├─ word_click.py    ── ddddocr + llm_vision                 │
+│    ├─ word_click.py    ── word_ocr (YOLO + Siamese)            │
+│    │                       (回退: ddddocr)                     │
 │    ├─ image_select.py  ── llm_vision                           │
 │    └─ _common.py       ── finish_with_verify / run_async       │
 └──────────────┬────────────────────────────────────────────────┘
                │ uses                                   uses
                ▼                                        ▼
-   ┌──────────────────────┐             ┌──────────────────────┐
-   │ solvers/             │             │ tdc/                 │
-   │   └─ llm_vision.py   │             │   ├─ provider.py     │
-   │      (OpenAI 兼容)    │             │   └─ nodejs_jsdom.py │
-   └──────────────────────┘             └──────────────────────┘
+   ┌──────────────────────────────┐     ┌──────────────────────┐
+   │ solvers/                      │     │ tdc/                 │
+   │   ├─ ort_provider.py          │     │   ├─ provider.py     │
+   │   ├─ word_ocr.py              │     │   └─ nodejs_jsdom.py │
+   │   │    (YOLO + Siamese ONNX)  │     │                      │
+   │   ├─ llm_vision.py            │     │                      │
+   │   │    (OpenAI 兼容)           │     │                      │
+   │   └─ models/                  │     │                      │
+   │       word_click_detector.onnx│     │                      │
+   │       word_click_matcher.onnx │     │                      │
+   │       font.ttf                │     │                      │
+   └──────────────────────────────┘     └──────────────────────┘
                │                                        │
                └──────────┬─────────────────────────────┘
                           ▼
@@ -35,7 +44,7 @@
       └──────────────────────────────────────────┘
 ```
 
-依赖方向严格自上而下：`pipelines` 依赖 `solvers`、`tdc`、`client`；`solvers` 和 `tdc` 互不依赖。
+依赖方向严格自上而下：`pipelines` 依赖 `solvers`、`tdc`、`client`；`solvers` 和 `tdc` 互不依赖。`server.py` 只依赖 `__init__.solve` 与 `solvers/word_ocr.warmup`，不直接导入 `pipelines/`。
 
 ## 三段式协议
 
@@ -78,7 +87,7 @@ POST 字段：`ans`、`pow_answer`、`pow_calc_time`、`collect`、`tlg`、`eks`
 |---|---|---|---|
 | `slide` | `solvers`（内嵌 NCC，见 `pipelines/slide.py` 的 `SliderSolver`） | —— | `numpy`、`Pillow` |
 | `icon_click` | `ddddocr` 检测 + 模板匹配 | —— | `ddddocr`（extra `icon-click`） |
-| `word_click` | `solvers/llm_vision.locate_chars` | `ddddocr` 按 bbox 分类 + 子串匹配 | `ddddocr` + OpenAI 兼容 API |
+| `word_click` | `solvers/word_ocr.locate_chars_by_siamese`（YOLO + Siamese ONNX，本地） | `ddddocr` 检测 + 分类兜底 | `onnxruntime` + `opencv-python-headless` + `ddddocr`（extra `word-click`） |
 | `image_select` | `solvers/llm_vision.match_region` | —— | OpenAI 兼容 API |
 
 自动路由：`captcha_type.classify(dyn_show_info)` 是一个纯函数分类器，按规则顺序返回 `slide` / `icon_click` / `word_click` / `image_select` / `unknown`。规则命中后 `pipelines.dispatch` 将请求分发到对应的 pipeline。

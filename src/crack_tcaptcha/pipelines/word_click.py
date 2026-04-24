@@ -6,11 +6,13 @@ Challenge format (captured from real Chrome + TJCaptcha.js 2.0):
   - fg_elem_list: [] (hint chars are inline in instruction text)
   - bg_elem_cfg.size_2d: [672, 480]
 
-Solver pipeline:
-  1. ddddocr detection → candidate char bboxes on bg
-  2. LLM vision (primary): sends annotated bg + target chars → gets {char: bbox_idx}
-  3. ddddocr OCR (fallback): if LLM unavailable or returns 0/miss for a char,
-     run per-bbox ddddocr classification and substring-match.
+Solver pipeline (primary path, local, ~50-200ms CPU):
+  1. YOLOv8 detection → candidate char bboxes on bg
+  2. Siamese similarity: render each target char with the bundled font
+     and match it against every bbox crop; pick highest-scoring unused bbox.
+
+Fallback (when the siamese extra is not installed or the YOLO stage
+returns 0 bboxes): the legacy ddddocr detection + per-bbox OCR path.
 
 Answer format (confirmed against real Chrome verify body):
   [{"elem_id": 1, "type": "DynAnswerType_POS", "data": "x,y"}, ...]
@@ -27,7 +29,6 @@ from crack_tcaptcha.exceptions import SolveError
 from crack_tcaptcha.models import PrehandleResp, VerifyResp
 from crack_tcaptcha.pipelines._common import finish_with_verify
 from crack_tcaptcha.pow import solve_pow
-from crack_tcaptcha.settings import settings
 from crack_tcaptcha.tdc.provider import TDCProvider
 from crack_tcaptcha.trajectory import generate_click_trajectory, merge_trajectories
 
@@ -40,71 +41,16 @@ def _parse_target_chars(instruction: str) -> list[str]:
     return re.findall(r"[\u4e00-\u9fff]", after)
 
 
-def _bbox_center(bbox: tuple[int, int, int, int]) -> tuple[int, int]:
-    x1, y1, x2, y2 = bbox
-    return ((x1 + x2) // 2, (y1 + y2) // 2)
+def _fallback_ddddocr(bg_bytes: bytes, targets: list[str]) -> list[tuple[int, int]]:
+    """Legacy ddddocr detect + per-bbox OCR fallback.
 
+    Only used if the primary siamese path is unavailable (onnxruntime/cv2 not
+    installed, model files missing, or YOLO produces no bboxes).
+    """
+    from crack_tcaptcha._legacy.icon_match import match_words
 
-def _fallback_match_by_ocr(
-    bg_bytes: bytes,
-    bboxes: list[tuple[int, int, int, int]],
-    targets: list[str],
-    already_assigned: dict[str, int],
-) -> dict[str, int]:
-    """Per-bbox ddddocr classify + substring match for chars LLM missed."""
-    import io
-
-    from PIL import Image
-
-    from crack_tcaptcha._legacy.icon_match import _get_ocr
-
-    missing = [ch for ch in targets if already_assigned.get(ch, 0) <= 0]
-    if not missing:
-        return already_assigned
-
-    ocr = _get_ocr()
-    bg_img = Image.open(io.BytesIO(bg_bytes)).convert("RGB")
-    bg_w, bg_h = bg_img.size
-    used_indices = {v for v in already_assigned.values() if v > 0}
-    bbox_ocr: dict[int, str] = {}
-    for i, (x1, y1, x2, y2) in enumerate(bboxes, start=1):
-        if i in used_indices:
-            continue
-        pad = 2
-        crop = bg_img.crop((max(0, x1 - pad), max(0, y1 - pad), min(bg_w, x2 + pad), min(bg_h, y2 + pad)))
-        buf = io.BytesIO()
-        crop.save(buf, "PNG")
-        try:
-            text = ocr.classification(buf.getvalue()) or ""
-        except Exception as e:  # pragma: no cover - defensive
-            log.warning("word_click fallback ocr error on bbox %d: %s", i, e)
-            text = ""
-        text = re.sub(r"[^\u4e00-\u9fff]", "", text)
-        bbox_ocr[i] = text
-    log.info("word_click fallback ocr on %d unused bboxes: %s", len(bbox_ocr), bbox_ocr)
-
-    result = dict(already_assigned)
-    for ch in missing:
-        for i, text in bbox_ocr.items():
-            if i in used_indices:
-                continue
-            if ch in text:
-                result[ch] = i
-                used_indices.add(i)
-                log.info("word_click fallback: %r → bbox %d via ocr=%r", ch, i, text)
-                break
-    # Final fallback: assign any remaining char to first unused bbox (visible click
-    # better than (0,0) which is guaranteed wrong).
-    for ch in targets:
-        if result.get(ch, 0) > 0:
-            continue
-        for i in range(1, len(bboxes) + 1):
-            if i not in used_indices:
-                result[ch] = i
-                used_indices.add(i)
-                log.info("word_click fallback: %r → bbox %d (last-resort)", ch, i)
-                break
-    return result
+    log.info("word_click: falling back to ddddocr match_words")
+    return match_words(bg_bytes, targets)
 
 
 def solve_one_attempt(
@@ -125,48 +71,16 @@ def solve_one_attempt(
         len(bg_bytes),
     )
 
+    # Primary path: local YOLO + Siamese (fast, no network, no API cost)
+    click_coords: list[tuple[int, int]]
     try:
-        from crack_tcaptcha._legacy.icon_match import detect_icons
-    except ImportError as e:
-        raise SolveError("word_click requires ddddocr: `uv sync --extra icon-click`") from e
+        from crack_tcaptcha.solvers.word_ocr import locate_chars_by_siamese
 
-    bboxes = detect_icons(bg_bytes)
-    if len(bboxes) < len(targets):
-        log.warning(
-            "word_click: only %d bboxes detected for %d targets",
-            len(bboxes),
-            len(targets),
-        )
-    if not bboxes:
-        raise SolveError("word_click: detector returned 0 bboxes")
-    log.info("word_click detection: %d bboxes=%s", len(bboxes), bboxes)
+        click_coords = locate_chars_by_siamese(bg_bytes, targets)
+    except SolveError as e:
+        log.warning("word_click siamese path failed: %s — using ddddocr fallback", e)
+        click_coords = _fallback_ddddocr(bg_bytes, targets)
 
-    # Primary: LLM vision (more reliable than ddddocr OCR on captcha fonts)
-    char_to_box: dict[str, int] = {}
-    llm_ok = bool(settings.llm_api_key and settings.llm_base_url)
-    if llm_ok:
-        try:
-            from crack_tcaptcha.solvers.llm_vision import locate_chars
-
-            char_to_box = locate_chars(bg_bytes, targets=targets, bboxes=bboxes)
-        except SolveError as e:
-            log.warning("word_click: LLM locate_chars failed, falling back: %s", e)
-    else:
-        log.info("word_click: LLM not configured, using ddddocr fallback only")
-
-    # Fallback for any char LLM returned 0 / miss
-    char_to_box = _fallback_match_by_ocr(bg_bytes, bboxes, targets, char_to_box)
-
-    click_coords: list[tuple[int, int]] = []
-    for ch in targets:
-        idx = char_to_box.get(ch, 0)
-        if 1 <= idx <= len(bboxes):
-            click_coords.append(_bbox_center(bboxes[idx - 1]))
-        else:
-            # Should not happen after fallback, but be safe.
-            cx, cy = _bbox_center(bboxes[0])
-            click_coords.append((cx, cy))
-            log.warning("word_click: char %r unresolved, using bbox 1", ch)
     log.info("word_click click_coords=%s for targets=%s", click_coords, targets)
 
     pow_answer, pow_calc_time = solve_pow(
