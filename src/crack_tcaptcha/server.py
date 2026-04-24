@@ -141,9 +141,7 @@ class _Handler(BaseHTTPRequestHandler):
         # Run in the executor so concurrent /solve requests don't block each
         # other. The HTTP server is already ThreadingHTTPServer, so this is
         # actually just enforcing a bounded concurrency.
-        fut = self.state.executor.submit(
-            solve, appid=str(appid), max_retries=retries, entry_url=entry_url
-        )
+        fut = self.state.executor.submit(solve, appid=str(appid), max_retries=retries, entry_url=entry_url)
         t0 = time.time()
         try:
             result = fut.result()

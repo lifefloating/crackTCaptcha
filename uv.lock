@@ -369,6 +369,17 @@ clip = [
     { name = "cn2an" },
     { name = "torch" },
 ]
+icon-click = [
+    { name = "ddddocr" },
+]
+word-click = [
+    { name = "ddddocr" },
+    { name = "onnxruntime", version = "1.24.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "onnxruntime", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "opencv-python-headless" },
+]
+
+[package.dev-dependencies]
 dev = [
     { name = "httpx" },
     { name = "hypothesis" },
@@ -379,15 +390,6 @@ dev = [
 ]
 docs = [
     { name = "mkdocs-material" },
-]
-icon-click = [
-    { name = "ddddocr" },
-]
-word-click = [
-    { name = "ddddocr" },
-    { name = "onnxruntime", version = "1.24.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "onnxruntime", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "opencv-python-headless" },
 ]
 
 [package.metadata]
@@ -400,9 +402,6 @@ requires-dist = [
     { name = "ddddocr", marker = "extra == 'icon-click'", specifier = ">=1.4" },
     { name = "ddddocr", marker = "extra == 'word-click'", specifier = ">=1.4" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
-    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.0" },
-    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.0" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "onnxruntime", marker = "extra == 'all'", specifier = ">=1.17" },
     { name = "onnxruntime", marker = "extra == 'word-click'", specifier = ">=1.17" },
@@ -411,15 +410,22 @@ requires-dist = [
     { name = "pillow", specifier = ">=10.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
     { name = "scrapling", extras = ["fetchers"], specifier = ">=0.4.3" },
     { name = "torch", marker = "extra == 'all'", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'clip'", specifier = ">=2.0" },
 ]
-provides-extras = ["icon-click", "word-click", "clip", "all", "dev", "docs"]
+provides-extras = ["icon-click", "word-click", "clip", "all"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "hypothesis", specifier = ">=6.0" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23" },
+    { name = "respx", specifier = ">=0.21" },
+    { name = "ruff", specifier = ">=0.4" },
+]
+docs = [{ name = "mkdocs-material", specifier = ">=9.0" }]
 
 [[package]]
 name = "cssselect"

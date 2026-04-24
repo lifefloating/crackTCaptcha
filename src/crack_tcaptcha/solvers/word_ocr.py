@@ -65,18 +65,14 @@ def _import_onnx():
     try:
         import onnxruntime  # noqa: F401
     except ImportError as e:  # pragma: no cover - import guard
-        raise SolveError(
-            "word_click requires onnxruntime: `uv sync --extra word-click`"
-        ) from e
+        raise SolveError("word_click requires onnxruntime: `uv sync --extra word-click`") from e
 
 
 def _import_cv2():
     try:
         import cv2
     except ImportError as e:  # pragma: no cover - import guard
-        raise SolveError(
-            "word_click requires opencv-python-headless: `uv sync --extra word-click`"
-        ) from e
+        raise SolveError("word_click requires opencv-python-headless: `uv sync --extra word-click`") from e
     return cv2
 
 
@@ -116,9 +112,7 @@ def _get_yolo_session():
         if not _YOLO_PATH.is_file():
             raise SolveError(f"word_click: missing yolo model at {_YOLO_PATH}")
         so = _make_session_options()
-        _yolo_session = ort.InferenceSession(
-            str(_YOLO_PATH), sess_options=so, providers=resolve_providers()
-        )
+        _yolo_session = ort.InferenceSession(str(_YOLO_PATH), sess_options=so, providers=resolve_providers())
         log.info("word_click yolo session providers=%s", _yolo_session.get_providers())
     return _yolo_session
 
@@ -136,9 +130,7 @@ def _get_siamese_session():
         if not _SIAMESE_PATH.is_file():
             raise SolveError(f"word_click: missing siamese model at {_SIAMESE_PATH}")
         so = _make_session_options()
-        _siamese_session = ort.InferenceSession(
-            str(_SIAMESE_PATH), sess_options=so, providers=resolve_providers()
-        )
+        _siamese_session = ort.InferenceSession(str(_SIAMESE_PATH), sess_options=so, providers=resolve_providers())
         inputs = _siamese_session.get_inputs()
         _siamese_input_names = (inputs[0].name, inputs[1].name)
         log.info(
