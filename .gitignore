@@ -13,5 +13,4 @@ site
 *.so
 *.whl
 .env
-*.onnx
 origin_papers/

@@ -24,7 +24,8 @@ Python >= 3.10, `uv` is the canonical package manager.
 uv sync
 
 # Install with optional extras
-uv sync --extra icon-click   # adds ddddocr + onnxruntime (needed for icon_click and word_click)
+uv sync --extra icon-click   # ddddocr + onnxruntime (icon_click pipeline)
+uv sync --extra word-click   # onnxruntime + opencv-headless + ddddocr (word_click pipeline, local YOLO+Siamese)
 uv sync --extra dev          # pytest, respx, ruff, hypothesis
 uv sync --extra docs         # mkdocs-material
 
@@ -40,8 +41,14 @@ uv run pytest tests/pipelines/ -q         # a single directory
 uv run ruff check .
 uv run ruff format .
 
-# CLI
+# CLI — one-shot
 uv run crack-tcaptcha solve --appid YOUR_APPID --entry-url https://your-site.example/login
+
+# CLI — long-running HTTP service (recommended for repeated use; models load once)
+uv run crack-tcaptcha serve --port 9991 --workers 4
+#   POST http://127.0.0.1:9991/solve  {"appid":"YOUR_APPID","retries":3}
+#   GET  http://127.0.0.1:9991/health
+#   set TCAPTCHA_SERVE_SK to require an X-SK header.
 
 # Docs
 uv run mkdocs serve
@@ -53,7 +60,8 @@ uv run mkdocs serve
 src/crack_tcaptcha/
 ├── __init__.py          # public API: solve()
 ├── captcha_type.py      # pure-function classifier (dyn_show_info → type)
-├── cli.py               # argparse entry point
+├── cli.py               # argparse entry point (solve / serve subcommands)
+├── server.py            # long-running HTTP service (stdlib http.server)
 ├── client.py            # HTTP three-phase + JSONP unwrap (scrapling / curl_cffi)
 ├── exceptions.py        # NetworkError, SolveError, PowError, TDCError
 ├── models.py            # pydantic models for prehandle / verify responses
@@ -64,10 +72,13 @@ src/crack_tcaptcha/
 │   ├── _common.py       # run_async, finish_with_verify (shared tail)
 │   ├── slide.py         # NCC template match
 │   ├── icon_click.py    # ddddocr detect + template match
-│   ├── word_click.py    # ddddocr detect + LLM vision (+ OCR fallback)
+│   ├── word_click.py    # YOLO detect + Siamese match (local ONNX); ddddocr OCR fallback
 │   └── image_select.py  # LLM region matching
 ├── solvers/
-│   └── llm_vision.py    # OpenAI-compatible vision client
+│   ├── ort_provider.py  # ONNX Runtime execution-provider selection
+│   ├── word_ocr.py      # YOLOv8 + Siamese solver for word_click (fast path)
+│   ├── llm_vision.py    # OpenAI-compatible vision client (image_select only)
+│   └── models/          # bundled ONNX models + font.ttf (force-included in wheel)
 └── tdc/
     ├── provider.py      # TDCProvider Protocol (DI point)
     ├── nodejs_jsdom.py  # Node.js subprocess implementation
@@ -77,6 +88,8 @@ src/crack_tcaptcha/
 Dependency direction is strictly top-down: `pipelines/` depends on
 `solvers/`, `tdc/`, `client.py`, `pow.py`, `trajectory.py`. `solvers/` and
 `tdc/` are independent of each other and must not import from `pipelines/`.
+`server.py` depends on `__init__.solve` and may trigger `solvers/word_ocr.warmup`
+at startup — it must not import from `pipelines/` directly.
 
 ## 4. Key Conventions
 
@@ -124,9 +137,19 @@ Dependency direction is strictly top-down: `pipelines/` depends on
   `DynAnswerType_UC`, `elem_id=""`, `data="<region_id>"`.
 - **Trajectory jitter.** Ease-in-out cubic with ±1 px jitter currently
   passes. Perfectly smooth trajectories get detected.
-- **LLM retry semantics.** `locate_chars` / `match_region` each retry once
+- **LLM retry semantics.** `match_region` (image_select) retries once
   internally on transport errors. Outer retries are the pipeline's
   `max_retries` (entire prehandle → verify loop).
+- **word_click model files are bundled.** `src/crack_tcaptcha/solvers/models/`
+  ships `word_click_detector.onnx` (YOLOv8, 10 MB),
+  `word_click_matcher.onnx` (Siamese, 29 MB), and `font.ttf` (4.6 MB).
+  These are `force-include`d into the wheel via hatch config. Don't
+  rename them without updating `word_ocr.py` and `pyproject.toml`.
+- **ORT cold-start hides behind warmup.** `crack-tcaptcha solve` spawns a
+  background thread that calls `solvers.word_ocr.warmup()` while the
+  first HTTP round-trip is in flight; `crack-tcaptcha serve` warms up at
+  boot. On macOS, `TCAPTCHA_ORT_BACKEND=cpu` is usually faster than the
+  default CoreML auto-pick because CoreML pays a one-off graph compile.
 
 ## 6. Testing Guidelines
 
@@ -173,11 +196,15 @@ Dependency direction is strictly top-down: `pipelines/` depends on
 
 - **Node.js >= 18** for the TDC.js bridge (`tdc/js/tdc_executor.js`,
   runs `tdc.js` inside jsdom). Install deps with `cd src/crack_tcaptcha/tdc/js && npm install`.
-- **`ddddocr`** (optional extra `icon-click`) for icon/character
-  detection. Required by `icon_click` and `word_click` pipelines. Pulls
-  in `onnxruntime`.
-- **OpenAI-compatible LLM relay** for `word_click` (recommended) and
-  `image_select` (required). Configure via `TCAPTCHA_LLM_API_KEY`,
+- **`ddddocr`** (optional extra `icon-click`, and part of `word-click`)
+  for icon / character detection. Required by `icon_click` and used as
+  the `word_click` fallback path. Pulls in `onnxruntime`.
+- **`onnxruntime` + `opencv-python-headless`** (optional extra
+  `word-click`, alongside `ddddocr`). Required for the primary
+  `word_click` path (local YOLOv8 detector + Siamese matcher shipped
+  under `solvers/models/`). No external API calls.
+- **OpenAI-compatible LLM relay** for `image_select` (required). No
+  longer required for `word_click`. Configure via `TCAPTCHA_LLM_API_KEY`,
   `TCAPTCHA_LLM_BASE_URL`, `TCAPTCHA_LLM_MODEL`, `TCAPTCHA_LLM_TIMEOUT`
   in `.env`. Any `/v1/chat/completions` endpoint that accepts
   `image_url` content blocks works.

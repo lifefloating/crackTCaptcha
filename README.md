@@ -5,20 +5,21 @@
 
 ![verify ok](images/word-click-success.png)
 
-> 上图为 word_click（文字点选）流水线的真实运行日志：从 `prehandle` → `getcapbysig` 下载背景图 → LLM 视觉给出点击坐标 → `nodejs_jsdom` 采集 TDC collect / eks / pow → `cap_union_new_verify` 一次通过，`ok=true`。
+> 上图为 word_click（文字点选）流水线的真实运行日志：从 `prehandle` → `getcapbysig` 下载背景图 → **本地 YOLO + Siamese 模型**给出点击坐标 → `nodejs_jsdom` 采集 TDC collect / eks / pow → `cap_union_new_verify` 一次通过，`ok=true`。
 
 ## 特性
 
 - **4 种验证类型**：`slider`（滑块）、`icon_click`（图标点击）、`word_click`（文字点选）、`image_select`（图像选择）
 - **无头浏览器依赖**：`nodejs_jsdom` 在 Node.js 进程里用 jsdom 跑官方 TDC.js，生成 `collect / eks / tokenid / pow_answer`
-- **策略化求解器**：滑块使用 OpenCV 模板匹配；点击类支持 `ddddocr` / 任意 OpenAI 兼容的 LLM vision
+- **策略化求解器**：滑块使用 OpenCV 模板匹配；`word_click` 走本地 **YOLOv8 检测 + Siamese 匹配**（纯 ONNX Runtime，单次 ~200 ms）；`icon_click` 使用 `ddddocr`；`image_select` 使用 OpenAI 兼容 LLM vision
+- **常驻 HTTP 服务**：`crack-tcaptcha serve` 让模型只加载一次，每次求解只付推理时间（零进程冷启动）
 - **工程化**：pydantic-settings 配置、结构化日志、CLI、pytest，类型完整
 
 ## 当前测试状态
 
 | 类型 | 状态 | 备注 |
 |---|---|---|
-| `word_click`（文字点选） | ✅ 已跑通（见上图） | LLM vision 映射字→bbox，一次通过 |
+| `word_click`（文字点选） | ✅ 已跑通（见上图） | 本地 YOLO + Siamese 模型，一次通过 |
 | `slider`（滑块） | 🧪 未充分验证 | pipeline 已实现，仅做过少量手工测试 |
 | `icon_click`（图标点击） | 🧪 未充分验证 | pipeline 已实现，依赖 `ddddocr`，待回归 |
 | `image_select`（图像选择） | 🧪 未充分验证 | pipeline 已实现，待回归 |
@@ -33,26 +34,32 @@
 # 最小安装：仅 slider pipeline（HTTP + 轨迹生成，无 ML 依赖）
 uv add crack-tcaptcha
 
-# 推荐：图标点击 + 文字点选（word_click 也依赖 ddddocr）
+# 文字点选（本地 YOLO + Siamese 模型；含 ddddocr 作为 OCR 兜底）
+uv add "crack-tcaptcha[word-click]"
+
+# 图标点击（仅 ddddocr）
 uv add "crack-tcaptcha[icon-click]"
 
 # 中文图像选择（cn-clip / torch，下载模型约数百 MB）
 uv add "crack-tcaptcha[clip]"
 
-# 全功能一键装（= icon-click + clip）
+# 全功能一键装（= word-click + icon-click + clip）
 uv add "crack-tcaptcha[all]"
 ```
 
-也可以用 `pip` 替代 `uv add`，语法一致：`pip install 'crack-tcaptcha[icon-click]'`。
+也可以用 `pip` 替代 `uv add`，语法一致：`pip install 'crack-tcaptcha[word-click]'`。
 
 | Extra | 引入依赖 | 启用的 pipeline |
 |---|---|---|
-| _(none)_ | 仅 httpx / pydantic / numpy / Pillow | `slider` |
-| `icon-click` | `ddddocr`（+ onnxruntime） | `icon_click`、`word_click` |
+| _(none)_ | httpx / pydantic / numpy / Pillow / scrapling | `slider` |
+| `icon-click` | `ddddocr`（+ onnxruntime） | `icon_click` |
+| `word-click` | `onnxruntime` + `opencv-python-headless` + `ddddocr` | `word_click`（本地 YOLO + Siamese，OCR 兜底） |
 | `clip` | `cn2an`、`cn-clip`、`torch` | `image_select`（CLIP backend） |
 | `all` | 以上全部 | 所有 pipeline |
 
-> 运行 `word_click` / `icon_click` 前未装 `[icon-click]` 会得到清晰的 ModuleNotFoundError 提示。
+> 未装 `[word-click]` / `[icon-click]` 时，对应 pipeline 抛出清晰的 `SolveError` 提示应装哪个 extra。
+
+> `word_click` 的本地模型（`word_click_detector.onnx` 10 MB、`word_click_matcher.onnx` 29 MB、`font.ttf` 4.6 MB）已随 wheel 打包，安装后开箱即用，无需额外下载。
 
 ### 前置要求
 
@@ -83,11 +90,28 @@ if result.ok:
 ### 命令行
 
 ```bash
-# 通用求解：--appid 替换为你自己的 APP_ID
+# 一次性求解：--appid 替换为你自己的 APP_ID
 crack-tcaptcha solve --appid YOUR_APPID --retries 3 --json
 
 # 指定来源页（会带上对应 Referer / Origin）
 crack-tcaptcha solve --appid YOUR_APPID --entry-url https://example.com/login --json
+```
+
+### 常驻 HTTP 服务（推荐用于重复调用）
+
+一次性 CLI 每次都要冷启动 Python + 加载 ONNX 模型，首次可能要花几秒。常驻模式模型只加载一次，后续请求只付推理时间：
+
+```bash
+# 启动（鉴权可选：导出 TCAPTCHA_SERVE_SK 后客户端需带 X-SK header）
+export TCAPTCHA_SERVE_SK=change-me
+crack-tcaptcha serve --port 9991 --workers 4
+
+# 客户端：POST /solve
+curl -H 'X-SK: change-me' -X POST http://127.0.0.1:9991/solve \
+    -d '{"appid":"YOUR_APPID","retries":3}'
+
+# 健康检查
+curl http://127.0.0.1:9991/health
 ```
 
 > 命令行示例中的 `YOUR_APPID` 仅为占位符，请替换为你自己的 appid；仓库不提供任何真实业务 appid。
@@ -111,18 +135,24 @@ crack-tcaptcha solve --appid YOUR_APPID --entry-url http://localhost:8765/tcap2_
 
 ```
 src/crack_tcaptcha/
-├── client.py              # HTTPX 客户端：prehandle / getcapbysig / verify
+├── client.py              # HTTP 三段式：prehandle / getcapbysig / verify
+├── cli.py                 # argparse 入口（solve / serve 子命令）
+├── server.py              # 常驻 HTTP 服务
 ├── pow.py                 # PoW 求解
-├── trajectory.py          # 轨迹/点击序列合成
+├── trajectory.py          # 轨迹 / 点击序列合成
 ├── captcha_type.py        # 类型分发路由
 ├── pipelines/             # 每种验证类型一个 pipeline
 │   ├── slide.py
 │   ├── icon_click.py
-│   ├── word_click.py      # 文字点选（对应截图演示）
+│   ├── word_click.py      # 本地 YOLO 检测 + Siamese 匹配（含 ddddocr 兜底）
 │   └── image_select.py
-├── solvers/llm_vision.py  # OpenAI 兼容 LLM 视觉求解器
+├── solvers/
+│   ├── ort_provider.py    # ORT execution-provider 选择（CUDA/ROCm/DML/CoreML/CPU）
+│   ├── word_ocr.py        # YOLO + Siamese 求解器（word_click 主路径）
+│   ├── llm_vision.py      # OpenAI 兼容 LLM vision（image_select 用）
+│   └── models/            # 打包的 ONNX 模型 + font.ttf
 └── tdc/                   # TDC.js 桥
-    ├── js/                # npm install 后放 node_modules
+    ├── js/                # npm install 后的 node_modules
     └── nodejs_jsdom.py    # jsdom NodeProvider
 ```
 
@@ -141,9 +171,18 @@ src/crack_tcaptcha/
 | `TCAPTCHA_TDC_TIMEOUT` | `60.0` | TDC.js 桥超时 |
 | `TCAPTCHA_TDC_DEBUG` | `false` | 打开后保留 jsdom 调试日志 |
 | `TCAPTCHA_PROXY` | `None` | `http://user:pass@host:port` |
-| `TCAPTCHA_LLM_API_KEY` | `""` | LLM vision 求解器（`image_select` / `word_click`） |
+| `TCAPTCHA_LLM_API_KEY` | `""` | LLM vision 求解器（仅 `image_select` 需要） |
 | `TCAPTCHA_LLM_BASE_URL` | `""` | OpenAI 兼容接口根 |
 | `TCAPTCHA_LLM_MODEL` | `gpt-5.4` | 模型名 |
+| `TCAPTCHA_ORT_BACKEND` | `auto` | ONNX 执行后端：`auto` / `cpu` / `cuda` / `rocm` / `dml` / `coreml` |
+| `TCAPTCHA_ORT_INTRA_OP_THREADS` | `min(4, cpu_count)` | ORT 线程数（Siamese 在 >4 时反而更慢） |
+| `TCAPTCHA_SERVE_SK` | `""` | 常驻服务鉴权 secret；非空时请求必须带 `X-SK` header |
+| `TCAPTCHA_SERVE_HOST` | `127.0.0.1` | `serve` 子命令监听地址 |
+| `TCAPTCHA_SERVE_PORT` | `9991` | `serve` 子命令监听端口 |
+| `TCAPTCHA_SERVE_WORKERS` | `4` | `serve` 并发 solve 上限 |
+
+> macOS 下若首次求解明显慢，通常是 CoreML 后端的图编译开销；
+> 导出 `TCAPTCHA_ORT_BACKEND=cpu` 往往比默认更快。
 
 ## 开发
 
@@ -153,47 +192,6 @@ uv run ruff check .
 uv run pytest -x -ra
 uv run pytest -m "not network"   # 跳过联网用例
 ```
-
-## 推荐 — 用本地模型替换 LLM vision
-
-当前 `word_click` / `image_select` 走 OpenAI 兼容接口，单次推理 **1~3 s** 起步（受网络、排队、token 数影响），是整条链路里最慢的一步。
-本地模型可以把这一步压到 **≤200 ms**，且无调用成本 / 限流 / 数据出站风险。
-
-两类任务本质都是 **"把一张图映射到一个确定的类别 / 索引"**，不需要真正的生成式 VLM：
-
-### 方案 A：PaddleOCR + 轻量匹配（推荐）
-
-| 子任务 | 本地替代 |
-|---|---|
-| `word_click`：识别背景图 3 个 bbox 里各是什么汉字 | **PaddleOCR** (`ch_PP-OCRv4`)，单字裁剪后 OCR → 与指令中的字做字符串匹配 |
-| `image_select`：在 N 宫格里挑"哪个是苹果" | **PaddleClas PP-LCNet / PP-ShiTu** 或 **cn-clip ViT-B/16**（已列在 `[clip]` extras） |
-
-优点：CPU 可跑、模型 <20 MB、推理 10~50 ms；PaddleOCR 对中文场景文字鲁棒性很好。
-
-### 方案 B：CLIP 类零样本匹配
-
-直接复用仓库里已经声明过的 `cn-clip` 依赖：
-
-```bash
-uv add "crack-tcaptcha[clip]"
-```
-
-- `word_click`：把每个 bbox 裁剪图与 "一张写着'X'字的图" 做 image-text 相似度 argmax（但中文单字 CLIP 准确率一般，建议配合 OCR 投票）
-- `image_select`：把指令"请选出所有包含苹果的图片"直接作为 text query，对 N 个格子打分排序，取 top-k
-
-优点：一个模型吃下所有"图→文"匹配场景；缺点：模型 ~400 MB，冷启动有成本。
-
-### 方案 C：ddddocr + 本地分类头（最轻）
-
-- `icon_click` 已经在用 `ddddocr`；`word_click` 的 bbox 识别也可以换 `ddddocr.DdddOcr(det=False)`（纯 OCR 模式）
-- 对 `image_select` 训一个 **PP-LCNet** 分类头（常见类别就那几类：动物、交通工具、食物...）+ "其它"兜底走 CLIP
-
-### 落地建议
-
-1. 在 `solvers/` 下新增 `paddle_ocr.py` 和 `cn_clip.py`，实现与 `llm_vision.py` 同签名（`match_region` / `locate_chars`）
-2. 在 `settings.py` 加 `solver_backend: Literal["llm", "paddle", "clip", "ddddocr"] = "llm"`
-3. pipeline 启动时根据 backend 路由，保留 LLM 作为兜底（本地模型置信度 < 阈值时回退）
-4. 评估指标：单验证码平均耗时、端到端通过率、CPU / 显存占用，基准样本集可用 `tests/samples/`
 
 ## 免责声明
 

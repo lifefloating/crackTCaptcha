@@ -65,3 +65,21 @@ after — don't batch updates.
   against live risk-control signals)
 - Deleting or renaming files under `tdc/js/` (tdc.js is vendored
   intentionally)
+- Deleting, renaming, or re-quantizing files under
+  `src/crack_tcaptcha/solvers/models/` (bundled ONNX models + font are
+  force-included into the wheel; a rename means editing `word_ocr.py`
+  and `pyproject.toml` in lockstep)
+
+### word_click / serve mode
+
+- Primary `word_click` path is local (YOLO detector + Siamese matcher
+  ONNX models under `solvers/models/`). LLM is no longer required.
+- When iterating on `solvers/word_ocr.py`, prefer the serve mode to
+  avoid per-run ONNX cold-start:
+  ```bash
+  uv run crack-tcaptcha serve --port 9991 --workers 2
+  # then hit POST /solve repeatedly
+  ```
+- On macOS, if solve feels slow, check provider selection: CoreML EP
+  pays a per-process graph-compile cost. Force CPU with
+  `TCAPTCHA_ORT_BACKEND=cpu` when benchmarking.

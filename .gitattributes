@@ -1,0 +1,2 @@
+src/crack_tcaptcha/solvers/models/*.onnx filter=lfs diff=lfs merge=lfs -text
+src/crack_tcaptcha/solvers/models/*.ttf filter=lfs diff=lfs merge=lfs -text

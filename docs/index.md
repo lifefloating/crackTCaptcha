@@ -8,7 +8,7 @@
 |---|---|---|
 | 滑块 `slider` | OpenCV NCC 模板匹配 | [slider.md](slider.md) |
 | 图标点击 `icon_click` | ddddocr 检测 + 模板匹配 | [icon-click.md](icon-click.md) |
-| 文字点选 `word_click` | ddddocr 检测 + LLM vision | [word-click.md](word-click.md) |
+| 文字点选 `word_click` | 本地 YOLO + Siamese（ddddocr 兜底） | [word-click.md](word-click.md) |
 | 图像选择 `image_select` | LLM vision | [image-select.md](image-select.md) |
 
 ## 快速导航

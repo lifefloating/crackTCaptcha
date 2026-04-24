@@ -24,9 +24,16 @@ dependencies = [
 
 [project.optional-dependencies]
 icon-click = ["ddddocr>=1.4"]
+word-click = [
+    "onnxruntime>=1.17",
+    "opencv-python-headless>=4.8",
+    "ddddocr>=1.4",
+]
 clip = ["cn2an>=0.5", "cn-clip>=1.0", "torch>=2.0"]
 all = [
     "ddddocr>=1.4",
+    "onnxruntime>=1.17",
+    "opencv-python-headless>=4.8",
     "cn2an>=0.5",
     "cn-clip>=1.0",
     "torch>=2.0",
@@ -52,6 +59,18 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/crack_tcaptcha"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/crack_tcaptcha/solvers/models/word_click_detector.onnx" = "crack_tcaptcha/solvers/models/word_click_detector.onnx"
+"src/crack_tcaptcha/solvers/models/word_click_matcher.onnx" = "crack_tcaptcha/solvers/models/word_click_matcher.onnx"
+"src/crack_tcaptcha/solvers/models/font.ttf" = "crack_tcaptcha/solvers/models/font.ttf"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/crack_tcaptcha/**",
+    "src/crack_tcaptcha/solvers/models/*.onnx",
+    "src/crack_tcaptcha/solvers/models/*.ttf",
+]
 
 [tool.ruff]
 line-length = 130
