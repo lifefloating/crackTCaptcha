@@ -2,21 +2,24 @@
 
 Responsibilities: prehandle, get_image, verify.  Zero knowledge of images or solvers.
 
-Uses scrapling's Fetcher (curl_cffi) with Chrome TLS impersonation to bypass
-Tencent's TLS-fingerprint-based bot detection (which returns 403 for plain
-httpx/requests/urllib).
+Uses wreq's blocking Client with Chrome TLS/HTTP2 fingerprint emulation to
+bypass Tencent's TLS-fingerprint-based bot detection (which returns 403 for
+plain httpx/requests/urllib).
 """
 
 from __future__ import annotations
 
 import base64
+import contextlib
+import datetime
 import json
 import logging
 import re
 import urllib.parse
 from typing import Any
 
-from scrapling.fetchers import Fetcher
+from wreq import Emulation, Proxy
+from wreq.blocking import Client as WreqClient
 
 from crack_tcaptcha.exceptions import NetworkError
 from crack_tcaptcha.models import (
@@ -30,6 +33,8 @@ from crack_tcaptcha.models import (
 from crack_tcaptcha.settings import settings
 
 _JSONP_RE = re.compile(r"^\s*\w+\s*\(\s*(.*)\s*\)\s*;?\s*$", re.DOTALL)
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -54,15 +59,32 @@ def _origin_of(url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}"
 
 
+def _resolve_emulation(name: str) -> Emulation:
+    """Map a settings string (e.g. "Chrome137") to wreq.Emulation enum.
+
+    Falls back to Chrome137 with a warning if the name is unknown — keeps the
+    client usable when settings drift ahead of the installed wreq version.
+    """
+    candidate = (name or "").strip()
+    emu = getattr(Emulation, candidate, None)
+    if emu is None:
+        log.warning("unknown TCAPTCHA_EMULATION=%r; falling back to Chrome137", name)
+        emu = Emulation.Chrome137
+    return emu
+
+
 # ---------------------------------------------------------------------------
 # Client class
 # ---------------------------------------------------------------------------
 
 
 class TCaptchaClient:
-    """Stateless HTTP facade for the three TCaptcha endpoints.
+    """Stateful HTTP facade for the three TCaptcha endpoints.
 
-    Uses scrapling Fetcher with Chrome TLS fingerprint impersonation.
+    Wraps a long-lived ``wreq.blocking.Client`` configured with Chrome
+    TLS/HTTP2 fingerprint emulation. Re-use one instance per logical session
+    (prehandle → verify) so the underlying connection pool / cookie jar can
+    persist; ``close()`` releases the runtime.
     """
 
     def __init__(
@@ -83,19 +105,27 @@ class TCaptchaClient:
         # these against the captcha registration; wrong values → errorCode=12.
         self._entry_url = entry_url
 
-        # Common kwargs forwarded to every Fetcher request
-        self._fetch_kw: dict[str, Any] = {
-            "headers": {"User-Agent": ua},
-            "impersonate": "chrome",
-            "stealthy_headers": True,
-            "follow_redirects": True,
-            "timeout": int(self._timeout),
+        # User-Agent header we apply to every request. wreq's emulation also
+        # sets a UA, but we override per-request to keep the value aligned
+        # with `ua` (and with the base64 copy sent in prehandle params).
+        self._common_headers: dict[str, str] = {"User-Agent": ua}
+
+        client_kw: dict[str, Any] = {
+            "emulation": _resolve_emulation(settings.emulation),
+            "user_agent": ua,
+            "timeout": datetime.timedelta(seconds=float(self._timeout)),
+            "cookie_store": True,
         }
         if self._proxy:
-            self._fetch_kw["proxy"] = self._proxy
+            client_kw["proxies"] = [Proxy.all(url=self._proxy)]
+        self._http: WreqClient = WreqClient(**client_kw)
 
     def close(self) -> None:
-        pass  # Fetcher is stateless — nothing to close
+        # wreq's blocking Client doesn't always expose .close(); best-effort.
+        closer = getattr(self._http, "close", None)
+        if callable(closer):
+            with contextlib.suppress(Exception):
+                closer()
 
     def __enter__(self):
         return self
@@ -147,24 +177,23 @@ class TCaptchaClient:
         # Real Chrome sends Referer = entry_url's origin + '/'. Fall back to
         # entry_url itself (or base_url) when no entry_url given.
         referer = effective_entry or settings.base_url
-        fetch_kw = {**self._fetch_kw, "headers": {**self._fetch_kw["headers"], "Referer": referer}}
+        headers = {**self._common_headers, "Referer": referer}
         try:
-            resp = Fetcher.get(url, params=params, **fetch_kw)
-            if resp.status != 200:
-                raise NetworkError(f"prehandle failed: HTTP {resp.status}")
+            resp = self._http.get(url, query=params, headers=headers)
+            status = resp.status.as_int()
+            if status != 200:
+                raise NetworkError(f"prehandle failed: HTTP {status}")
         except NetworkError:
             raise
         except Exception as e:
             raise NetworkError(f"prehandle failed: {e}") from e
 
-        # resp.body is bytes; decode to text for JSONP parsing
-        raw_text = resp.body.decode(resp.encoding or "utf-8", errors="replace")
+        raw_text = resp.text()
         data = parse_jsonp(raw_text)
         dyn = data["data"]["dyn_show_info"]
         comm = data["data"]["comm_captcha_cfg"]
 
         # Log key fields for diagnostics
-        log = logging.getLogger(__name__)
         log.info(
             "prehandle dyn_show_info keys=%s instruction=%r show_type=%s data_type=%s regions=%d fg_elems=%d",
             list(dyn.keys()),
@@ -241,31 +270,26 @@ class TCaptchaClient:
     def get_image(self, img_url: str) -> bytes:
         """Download a captcha image (bg or fg sprite)."""
         full = img_url if img_url.startswith("http") else f"{settings.base_url}{img_url}"
-        img_kw = {
-            **self._fetch_kw,
-            "headers": {
-                **self._fetch_kw["headers"],
-                "Referer": "https://turing.captcha.gtimg.com/",
-            },
-        }
+        headers = {**self._common_headers, "Referer": "https://turing.captcha.gtimg.com/"}
         try:
-            resp = Fetcher.get(full, **img_kw)
-            log = logging.getLogger(__name__)
+            resp = self._http.get(full, headers=headers)
+            status = resp.status.as_int()
+            body = resp.bytes()
             log.info(
                 "image download: %s → HTTP %d, %d bytes",
                 full[:100],
-                resp.status,
-                len(resp.body),
+                status,
+                len(body),
             )
-            if resp.status != 200:
-                raise NetworkError(f"image download failed: HTTP {resp.status}")
-            if len(resp.body) == 0:
+            if status != 200:
+                raise NetworkError(f"image download failed: HTTP {status}")
+            if len(body) == 0:
                 raise NetworkError(f"image download returned empty body: {full[:120]}")
         except NetworkError:
             raise
         except Exception as e:
             raise NetworkError(f"image download failed: {e}") from e
-        return resp.body
+        return body
 
     def get_fg_image_url(self, bg_img_url: str) -> str:
         """Derive the foreground sprite URL from the background URL (img_index=1 → 0)."""
@@ -302,9 +326,9 @@ class TCaptchaClient:
         # Real Chrome (CDP capture 2026-04-20 aid=196026326 success) sends:
         #   Referer: <entry_url>          (full business page URL)
         #   Origin:  <entry_url_origin>   (scheme://host[:port])
-        # scrapling defaults to stealth Referer=https://www.google.com/ which
-        # the 2.0 backend rejects with errorCode=12.
-        verify_headers: dict[str, str] = {**self._fetch_kw["headers"]}
+        # Override emulation defaults so the 2.0 backend doesn't reject with
+        # errorCode=12 due to a generic Referer.
+        verify_headers: dict[str, str] = {**self._common_headers}
         origin = _origin_of(self._entry_url)
         if self._entry_url:
             verify_headers["Referer"] = self._entry_url
@@ -312,8 +336,8 @@ class TCaptchaClient:
             verify_headers["Origin"] = origin
         # Match Chrome's XHR Accept header
         verify_headers.setdefault("Accept", "application/json, text/javascript, */*; q=0.01")
-        fetch_kw = {**self._fetch_kw, "headers": verify_headers}
-        log = logging.getLogger(__name__)
+        # wreq's `body=` accepts raw bytes/str but doesn't auto-set Content-Type.
+        verify_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
         log.info(
             "verify POST: sess=%s... ans=%s pow_answer=%s pow_calc_time=%s collect_len=%d tlg=%s eks_len=%d referer=%s origin=%s",
             sess[:40],
@@ -327,9 +351,10 @@ class TCaptchaClient:
             verify_headers.get("Origin", ""),
         )
         try:
-            resp = Fetcher.post(url, data=body, **fetch_kw)
-            if resp.status != 200:
-                raise NetworkError(f"verify failed: HTTP {resp.status}")
+            resp = self._http.post(url, body=urllib.parse.urlencode(body).encode(), headers=verify_headers)
+            status = resp.status.as_int()
+            if status != 200:
+                raise NetworkError(f"verify failed: HTTP {status}")
         except NetworkError:
             raise
         except Exception as e:

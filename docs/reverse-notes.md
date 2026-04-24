@@ -68,4 +68,4 @@ TDC 期望的输入是 `{elapsed_ms: "x,y"}` 字典。带 ±1 像素抖动的三
 - `navigator.webdriver` —— 已在 jsdom patch 为 `false`
 - Canvas 指纹 —— jsdom 返回空白，目前仍能通过（腾讯侧未强校验）
 - 请求频率 —— 大规模场景用代理池，通过 `TCAPTCHA_PROXY` 或 `solve()` 的 proxy 参数配置
-- TLS 指纹 —— 普通 Python HTTP 库会被 403；`client.py` 使用 `scrapling.Fetcher`（基于 `curl_cffi`）做 Chrome TLS 模拟
+- TLS 指纹 —— 普通 Python HTTP 库会被 403；`client.py` 使用 `wreq.blocking.Client`（`Emulation.Chrome137`，可通过 `TCAPTCHA_EMULATION` 切换）做 Chrome TLS / HTTP2 指纹模拟

@@ -1,0 +1,64 @@
+# crack-tcaptcha
+
+> Python automation solver for Tencent T-Sec TCaptcha (腾讯天御验证码). Pure HTTP protocol implementation — no Selenium / Playwright / browser automation required. Uses Node.js + jsdom to bridge the official TDC.js for `collect / eks / tokenid / pow_answer` generation, plus local ONNX models (YOLOv8 detector + Siamese matcher) for word-click solving.
+
+The project is maintained by **lifefloating** and distributed under **GPL-3.0-or-later**. It is intended strictly for **personal security research, technical learning, and academic exchange**, and must not be used for account registration abuse, scalping, credential stuffing, traffic manipulation, illegal scraping, paywall bypass, or risk-control evasion. Core differentiator: the `word_click` pipeline runs a fully local YOLOv8 + Siamese ONNX chain (~200 ms per solve, no external LLM API required), while an HTTP-only protocol layer handles slider, icon-click, word-click, and image-select challenge types.
+
+## Supported captcha types
+
+- **`word_click`** (文字点选) — ✅ production-ready. Local YOLOv8 detector + Siamese matcher, bundled ONNX models (detector 10 MB, matcher 29 MB, font 4.6 MB). One-shot pass demonstrated.
+- **`slider`** (滑块) — 🧪 implemented, lightly tested. OpenCV template matching for gap localization; humanized trajectory synthesis.
+- **`icon_click`** (图标点击) — 🧪 implemented, pending regression. Uses `ddddocr`.
+- **`image_select`** (图像选择) — 🧪 implemented, pending regression. Uses OpenAI-compatible LLM vision or CN-CLIP backend.
+
+## Documentation
+
+- [README (project overview, install, quick start)](https://github.com/lifefloating/crackTCaptcha/blob/main/README.md): Features, install matrix by extra, Python API + CLI + serve-mode usage, environment variables, disclaimer.
+- [AGENTS.md (tool-agnostic working manual)](https://github.com/lifefloating/crackTCaptcha/blob/main/AGENTS.md): Canonical contributor guide — build/test commands, architecture map, conventions, gotchas, testing guidelines, recipe for adding a new captcha type.
+- [CLAUDE.md (Claude Code workflow conventions)](https://github.com/lifefloating/crackTCaptcha/blob/main/CLAUDE.md): Slash commands, skills, task tracking, tool preferences, PR etiquette, things to confirm before doing.
+- [docs/architecture.md](https://github.com/lifefloating/crackTCaptcha/blob/main/docs/architecture.md): Deep dive on HTTP three-stage flow (`prehandle` → `getcapbysig` → `cap_union_new_verify`), TDC.js jsdom bridge, PoW shaping, and trajectory synthesis.
+
+## Install
+
+- [PyPI: crack-tcaptcha](https://pypi.org/project/crack-tcaptcha/): Distributed as a wheel; bundled ONNX models and font are force-included via `pyproject.toml`.
+- Install extras: `uv add crack-tcaptcha` (slider only) · `[word-click]` (local YOLO+Siamese, +ddddocr fallback) · `[icon-click]` (ddddocr) · `[clip]` (CN-CLIP + torch) · `[all]` (everything).
+- Prerequisites: Python ≥ 3.10, Node.js ≥ 18 (for the TDC.js bridge — run `npm install` under `src/crack_tcaptcha/tdc/js`).
+
+## Architecture
+
+- [src/crack_tcaptcha/client.py](https://github.com/lifefloating/crackTCaptcha/blob/main/src/crack_tcaptcha/client.py): HTTP three-stage orchestrator (`prehandle` / `getcapbysig` / `cap_union_new_verify`).
+- [src/crack_tcaptcha/pipelines/](https://github.com/lifefloating/crackTCaptcha/tree/main/src/crack_tcaptcha/pipelines): One pipeline per challenge type (`slide.py`, `icon_click.py`, `word_click.py`, `image_select.py`).
+- [src/crack_tcaptcha/solvers/](https://github.com/lifefloating/crackTCaptcha/tree/main/src/crack_tcaptcha/solvers): `word_ocr.py` (YOLO + Siamese primary path for word-click), `llm_vision.py` (image-select), `ort_provider.py` (ONNX Runtime EP selection: CUDA / ROCm / DirectML / CoreML / CPU), `models/` (bundled ONNX + font).
+- [src/crack_tcaptcha/tdc/](https://github.com/lifefloating/crackTCaptcha/tree/main/src/crack_tcaptcha/tdc): `nodejs_jsdom.py` NodeProvider + vendored `js/` directory (do not rename or delete — `tdc.js` is vendored intentionally).
+- [src/crack_tcaptcha/pow.py](https://github.com/lifefloating/crackTCaptcha/blob/main/src/crack_tcaptcha/pow.py): PoW answer solver and `calc_time` shaping tuned against live risk-control signals.
+- [src/crack_tcaptcha/trajectory.py](https://github.com/lifefloating/crackTCaptcha/blob/main/src/crack_tcaptcha/trajectory.py): Mouse trajectory / click sequence synthesis.
+- [src/crack_tcaptcha/server.py](https://github.com/lifefloating/crackTCaptcha/blob/main/src/crack_tcaptcha/server.py): Long-running HTTP service (`crack-tcaptcha serve`) — loads models once, amortizes ONNX cold-start across requests.
+
+## Usage entry points
+
+- **Python API**: `from crack_tcaptcha import solve, TCaptchaType` → `solve(appid=..., challenge_type=TCaptchaType.SLIDER, max_retries=3, entry_url=...)` returns a result with `ok`, `ticket`, `randstr`.
+- **CLI (one-shot)**: `crack-tcaptcha solve --appid YOUR_APPID --retries 3 --json` (optional `--entry-url` to set Referer / Origin).
+- **CLI (long-running HTTP service)**: `crack-tcaptcha serve --port 9991 --workers 4` then `POST /solve` with optional `X-SK` auth header (set via `TCAPTCHA_SERVE_SK`). Health check at `GET /health`.
+- **Local test page**: `examples/tcap2_loader.html` — minimal TCaptcha 2.0 loader for local integration testing; replace `YOUR_APPID` and serve via `python3 -m http.server 8765`.
+
+## Configuration
+
+- Environment variables use the `TCAPTCHA_` prefix (via pydantic-settings; also read from `.env`):
+  - `TCAPTCHA_USER_AGENT`, `TCAPTCHA_BASE_URL` (default `https://turing.captcha.qcloud.com`), `TCAPTCHA_TIMEOUT`, `TCAPTCHA_MAX_RETRIES`
+  - `TCAPTCHA_TDC_TIMEOUT`, `TCAPTCHA_TDC_DEBUG`, `TCAPTCHA_PROXY`
+  - `TCAPTCHA_LLM_API_KEY`, `TCAPTCHA_LLM_BASE_URL`, `TCAPTCHA_LLM_MODEL` — only required for `image_select`
+  - `TCAPTCHA_ORT_BACKEND` (`auto` / `cpu` / `cuda` / `rocm` / `dml` / `coreml`), `TCAPTCHA_ORT_INTRA_OP_THREADS` (Siamese is slower with > 4 threads)
+  - `TCAPTCHA_SERVE_SK`, `TCAPTCHA_SERVE_HOST`, `TCAPTCHA_SERVE_PORT`, `TCAPTCHA_SERVE_WORKERS`
+- macOS note: first solve can feel slow because of CoreML EP graph compilation — setting `TCAPTCHA_ORT_BACKEND=cpu` is often faster than the default.
+
+## Development
+
+- [Contributing / workflow](https://github.com/lifefloating/crackTCaptcha/blob/main/AGENTS.md): `uv sync --all-extras`, `uv run ruff check .`, `uv run pytest -x -ra`, `uv run pytest -m "not network"` to skip network-dependent tests.
+- [Issue tracker](https://github.com/lifefloating/crackTCaptcha/issues): Bug reports, pipeline regressions, and requests for additional test samples for `slider` / `icon_click` / `image_select`.
+- [Legacy branch `legacy-llm-vision`](https://github.com/lifefloating/crackTCaptcha/tree/legacy-llm-vision): Historical implementation of `word_click` using GPT / OpenAI-compatible LLM vision. The main branch has switched to the local YOLOv8 + Siamese pure-ONNX approach; the legacy branch is kept for reference and fallback only.
+
+## Optional
+
+- [PyPI release history](https://pypi.org/project/crack-tcaptcha/#history): Version list and changelog entries.
+- [License — GPL-3.0-or-later](https://github.com/lifefloating/crackTCaptcha/blob/main/LICENSE): Full license text. Any derivative work must remain GPL-compatible.
+- [Disclaimer section of README](https://github.com/lifefloating/crackTCaptcha/blob/main/README.md#%E5%85%8D%E8%B4%A3%E5%A3%B0%E6%98%8E): Full legal disclaimer (Chinese) covering permitted research use and prohibited misuse under Chinese Cybersecurity Law, Data Security Law, and PIPL.

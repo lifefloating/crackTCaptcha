@@ -27,6 +27,11 @@ class TCaptchaSettings(BaseSettings):
     tdc_node_path: str = "node"
     proxy: str | None = None
 
+    # wreq emulation profile (Chrome major version). Maps to wreq.Emulation.<name>
+    # via _resolve_emulation in client.py. Examples: "Chrome137" (default),
+    # "Chrome134", "Chrome131". Unknown names fall back to Chrome137.
+    emulation: str = "Chrome137"
+
     # LLM vision solver (used by image_select pipeline)
     llm_api_key: str = ""
     llm_base_url: str = ""

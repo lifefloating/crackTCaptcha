@@ -54,7 +54,7 @@ class NodeJsdomProvider:
                 proc.communicate(payload.encode()),
                 timeout=self._timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             raise TDCError(f"tdc_executor.js timed out after {self._timeout}s") from None
 

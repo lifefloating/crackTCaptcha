@@ -53,7 +53,7 @@ uv add "crack-tcaptcha[all]"
 
 | Extra | 引入依赖 | 启用的 pipeline |
 |---|---|---|
-| _(none)_ | httpx / pydantic / numpy / Pillow / scrapling | `slider` |
+| _(none)_ | httpx / pydantic / numpy / Pillow / wreq | `slider` |
 | `icon-click` | `ddddocr`（+ onnxruntime） | `icon_click` |
 | `word-click` | `onnxruntime` + `opencv-python-headless` + `ddddocr` | `word_click`（本地 YOLO + Siamese，OCR 兜底） |
 | `clip` | `cn2an`、`cn-clip`、`torch` | `image_select`（CLIP backend） |

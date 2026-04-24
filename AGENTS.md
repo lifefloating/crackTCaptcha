@@ -9,8 +9,8 @@ T-Sec TCaptcha (TCaptcha 2.0, `turing.captcha.qcloud.com`). It supports four
 challenge types (`slider`, `icon_click`, `word_click`, `image_select`) and
 does **not** drive a real browser — it replays the official JavaScript
 fingerprint / behavior collector (`TDC.js`) inside a Node.js + jsdom
-subprocess and speaks the captcha HTTP protocol directly with Chrome-TLS
-impersonation (via `scrapling` + `curl_cffi`).
+subprocess and speaks the captcha HTTP protocol directly with Chrome
+TLS/HTTP2 fingerprint emulation (via [`wreq`](https://github.com/0x676e67/wreq-python)).
 
 See `docs/` for user-facing documentation and `docs/architecture.md` for the
 layered architecture diagram.
@@ -62,7 +62,7 @@ src/crack_tcaptcha/
 ├── captcha_type.py      # pure-function classifier (dyn_show_info → type)
 ├── cli.py               # argparse entry point (solve / serve subcommands)
 ├── server.py            # long-running HTTP service (stdlib http.server)
-├── client.py            # HTTP three-phase + JSONP unwrap (scrapling / curl_cffi)
+├── client.py            # HTTP three-phase + JSONP unwrap (wreq Chrome emulation)
 ├── exceptions.py        # NetworkError, SolveError, PowError, TDCError
 ├── models.py            # pydantic models for prehandle / verify responses
 ├── pow.py               # MD5 PoW solver with calc_time shaping
@@ -114,8 +114,9 @@ at startup — it must not import from `pipelines/` directly.
 
 - **TLS fingerprint is mandatory.** Plain `httpx` / `requests` / `urllib`
   get `403` from `turing.captcha.qcloud.com`. `client.py` uses
-  `scrapling.fetchers.Fetcher` (curl_cffi under the hood) to impersonate
-  Chrome. Don't "simplify" this to `httpx`.
+  `wreq.blocking.Client` with `Emulation.Chrome137` (configurable via
+  `TCAPTCHA_EMULATION`) to impersonate Chrome's JA3/JA4 + HTTP/2 frames.
+  Don't "simplify" this to `httpx`.
 - **TDC.js runs in Node, not Python.** The jsdom window must have
   `pretendToBeVisual: true`, `runScripts: "dangerously"`, plus patches for
   `screen`, `innerWidth/Height`, `devicePixelRatio`, `navigator.webdriver`.
@@ -208,8 +209,10 @@ at startup — it must not import from `pipelines/` directly.
   `TCAPTCHA_LLM_BASE_URL`, `TCAPTCHA_LLM_MODEL`, `TCAPTCHA_LLM_TIMEOUT`
   in `.env`. Any `/v1/chat/completions` endpoint that accepts
   `image_url` content blocks works.
-- **`scrapling`** (required) for Chrome-TLS HTTP; do not replace with
-  plain `httpx`.
+- **`wreq`** (required, >=0.11) for Chrome TLS/HTTP2 fingerprint emulation;
+  do not replace with plain `httpx`. Pinning a specific Chrome version is
+  done via `TCAPTCHA_EMULATION=Chrome137` (default) — bump if Tencent's
+  fingerprint policy starts returning 403 on the default profile.
 
 ## 9. How to Add a New Captcha Type
 

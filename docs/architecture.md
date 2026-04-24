@@ -107,6 +107,6 @@ Python ──subprocess──▶ Node.js + jsdom ──eval──▶ tdc.js
 
 ## HTTP 层设计
 
-`client.py` 使用 `scrapling` 的 `Fetcher`（底层 `curl_cffi`）做 Chrome TLS 指纹模拟，绕过腾讯基于 TLS 指纹的 bot 检测。普通的 `httpx` / `requests` / `urllib` 在该端点会直接收到 403。
+`client.py` 使用 [`wreq`](https://github.com/0x676e67/wreq-python) 的 `blocking.Client`（默认 `Emulation.Chrome137`，可通过 `TCAPTCHA_EMULATION` 切换）做 Chrome TLS / HTTP2 指纹模拟，绕过腾讯基于指纹的 bot 检测。普通的 `httpx` / `requests` / `urllib` 在该端点会直接收到 403。
 
 `entry_url` 参数可选，用于为请求附加合理的 `Referer` / `Origin`。在真实业务站点嵌入时建议传入，空值也能跑通但风控更严格。
