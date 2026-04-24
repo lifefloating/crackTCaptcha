@@ -14,7 +14,7 @@ TrajectoryKind = Literal["slider", "click", "multi_click"]
 # ---------------------------------------------------------------------------
 
 
-class TCaptchaType(str, Enum):
+class TCaptchaType(str, Enum):  # noqa: UP042  # str+Enum kept for pydantic v2 / JSON serialization compatibility
     SLIDER = "slider"
     ICON_CLICK = "icon_click"
 
