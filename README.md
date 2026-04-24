@@ -26,6 +26,8 @@
 
 > 目前项目重点打磨 `word_click`，其它类型欢迎 PR 补测试样本 / 回归用例。
 
+> 📎 **历史方案**：早期 `word_click` 使用 GPT / OpenAI 兼容 LLM vision 接口识别文字坐标的实现，已保留在 [`legacy-llm-vision`](../../tree/legacy-llm-vision) 分支，供参考或回退使用。主分支已切换为本地 YOLOv8 + Siamese 纯 ONNX 方案，无需任何外部大模型 API。
+
 ## 安装
 
 ### 按需求选择

@@ -55,8 +55,9 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "serve":
-        from crack_tcaptcha.server import run as serve_run
         import os as _os
+
+        from crack_tcaptcha.server import run as serve_run
 
         serve_run(
             host=args.host,
